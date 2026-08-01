@@ -46,11 +46,13 @@ func main() {
 	}
 	defer database.Close()
 
+	repositoryUtils := postgres.NewPostgresRepositoryUtils(&database)
+
 	usersRepo := postgres.NewPostgresUserRepository(&database)
 	usersService := service.NewUsersService(usersRepo)
 
 	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
-	meetingsService := service.NewMeetingsService(meetingsRepo, &serverConfig)
+	meetingsService := service.NewMeetingsService(meetingsRepo, usersRepo, repositoryUtils, &serverConfig)
 
 	handlers := server.InitializeHandlers(
 		&serverConfig,

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 )
@@ -48,7 +50,9 @@ func (s *PostgresUserRepository) Create(ctx context.Context, id string) (*model.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == pgerrcode.UniqueViolation {
-				return nil, fmt.Errorf("user id busy")
+				err = &models.CustomErr{Message: "user id busy", HTTPStatus: http.StatusConflict}
+				logger.Error(err.Error())
+				return nil, err
 			}
 		}
 		logger.Error(err.Error())

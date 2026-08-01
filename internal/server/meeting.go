@@ -68,7 +68,7 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	err = h.meetingsService.Load(req.Context(), &meetingData, file, header)
+	meeting, err := h.meetingsService.Load(req.Context(), &meetingData, file, header)
 	if err != nil {
 		var customErr *models.CustomErr
 		if errors.As(err, &customErr) {
@@ -82,8 +82,8 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	}
 
 	successMessage := "meeting file successfully uploaded"
-	logger.Info(successMessage, slog.String("id", meetingData.ID))
+	logger.Info(successMessage, slog.String("id", meeting.ID))
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusAccepted)
-	res.Write(models.NewSuccessResponseBuffer(successMessage))
+	res.Write(models.NewSuccessResponseBufferWithData(successMessage, meeting))
 }

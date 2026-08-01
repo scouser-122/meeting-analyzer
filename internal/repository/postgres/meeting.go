@@ -26,6 +26,7 @@ func NewPostgresMeetingRepository(db *PostgresDatabase) *PostgresMeetingReposito
 		err := row.Scan(
 			&meeting.ID,
 			&meeting.UserID,
+			&meeting.Name,
 			&meeting.FilePath,
 			&meeting.OriginalFilename,
 			&meeting.CreatedAt,
@@ -44,8 +45,13 @@ func NewPostgresMeetingRepository(db *PostgresDatabase) *PostgresMeetingReposito
 
 func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (*model.Meeting, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
 	id := uuid.New().String()
-	meeting, err := r.repo.Create(ctx, "id,user_id,created_at,updated_at", id, userID, time.Now(), time.Now())
+	meeting, err := repo.Create(ctx, "id,user_id,created_at,updated_at", id, userID, time.Now(), time.Now())
 	if err != nil {
 		logger.Error(err.Error())
 		return nil, err
@@ -75,7 +81,8 @@ func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.M
 	}
 	_, err := repo.Update(
 		ctx,
-		"UPDATE meetings SET file_path = $1, original_file_name = $2, updated_at = $3 WHERE id = $4",
+		"UPDATE meetings SET name = $1, file_path = $2, original_file_name = $3, updated_at = $4 WHERE id = $5",
+		meeting.Name,
 		meeting.FilePath,
 		meeting.OriginalFilename,
 		time.Now(),

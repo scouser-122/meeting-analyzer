@@ -21,17 +21,23 @@ import (
 
 // MeetingsService service to work with meetings
 type MeetingsService struct {
-	repo      repository.MeetingRepository
-	uploadDir string
+	meetingsRepo    repository.MeetingRepository
+	usersRepo       repository.UserRepository
+	repositoryUtils repository.RepositoryUtils
+	uploadDir       string
 }
 
 // MeetingsService creates new MeetingsService instance
 func NewMeetingsService(
-	repo repository.MeetingRepository,
+	meetingsRepo repository.MeetingRepository,
+	usersRepo repository.UserRepository,
+	repositoryUtils repository.RepositoryUtils,
 	serverConfig *config.ServerConfig,
 ) *MeetingsService {
 	service := MeetingsService{}
-	service.repo = repo
+	service.meetingsRepo = meetingsRepo
+	service.usersRepo = usersRepo
+	service.repositoryUtils = repositoryUtils
 	service.uploadDir = *serverConfig.UploadFileDir
 	return &service
 }
@@ -49,13 +55,60 @@ func (s *MeetingsService) Load(
 	meeting *model.Meeting,
 	file multipart.File,
 	header *multipart.FileHeader,
+) (*model.Meeting, error) {
+	if meeting.UserID == "" {
+		return nil, &models.CustomErr{
+			Message:    "user id not specified",
+			HTTPStatus: http.StatusBadRequest,
+		}
+	}
+
+	_, err := s.usersRepo.GetByID(ctx, meeting.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.repositoryUtils.CreateTransaction(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	ctx = context.WithValue(ctx, models.DbTransactionKey, tx)
+
+	newMeeting, err := s.meetingsRepo.Create(ctx, meeting.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if meeting.Name != nil {
+		newMeeting.Name = new(string)
+		*newMeeting.Name = *meeting.Name
+	}
+
+	err = s.saveMeetingFileToFS(ctx, newMeeting, file, header)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.meetingsRepo.Update(ctx, newMeeting)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.repositoryUtils.CommitTransaction(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return newMeeting, nil
+}
+
+func (s *MeetingsService) saveMeetingFileToFS(
+	ctx context.Context,
+	meeting *model.Meeting,
+	file multipart.File,
+	header *multipart.FileHeader,
 ) error {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-
-	newMeeting, err := s.repo.Create(ctx, meeting.UserID)
-	if err != nil {
-		return err
-	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if !allowedExts[ext] {
@@ -110,15 +163,11 @@ func (s *MeetingsService) Load(
 		}
 	}
 
-	newMeeting.FilePath = new(string)
-	*newMeeting.FilePath = destPath
-	newMeeting.OriginalFilename = new(string)
-	*newMeeting.OriginalFilename = header.Filename
+	meeting.FilePath = new(string)
+	*meeting.FilePath = destPath
+	meeting.OriginalFilename = new(string)
+	*meeting.OriginalFilename = header.Filename
 
-	err = s.repo.Update(ctx, newMeeting)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

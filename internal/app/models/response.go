@@ -12,6 +12,8 @@ type CommonResponse struct {
 	Status string `json:"status"`
 	// Message response message
 	Message string `json:"message,omitempty"`
+	// Data response data
+	Data any `json:"data,omitempty"`
 }
 
 // NewErrorResponseBuffer creates byte buffer for error response
@@ -40,9 +42,17 @@ func WriteResponseError(err *CustomErr, res http.ResponseWriter) {
 // NewSuccessResponseBuffer creates byte buffer for success response
 // to be passed in Write method of ResponseWriter
 func NewSuccessResponseBuffer(message string) []byte {
+	return NewSuccessResponseBufferWithData(message, nil)
+}
+
+// NewSuccessResponseBufferWithData creates byte buffer for success response
+// to be passed in Write method of ResponseWriter
+func NewSuccessResponseBufferWithData(message string, data any) []byte {
+
 	result := CommonResponse{
 		Status:  "ok",
 		Message: message,
+		Data:    data,
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
