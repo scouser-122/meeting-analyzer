@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
-	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 )
 
@@ -24,7 +24,7 @@ func DataBaseRequestRetry(ctx context.Context, config config.RetryConfig, operat
 
 		lastErr = err
 
-		if model.ClassifyPostgreSQLError(err) == model.ErrorNonRetryable {
+		if models.ClassifyPostgreSQLError(err) == models.ErrorNonRetryable {
 			return lastErr
 		}
 

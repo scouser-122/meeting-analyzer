@@ -4,7 +4,7 @@ import "time"
 
 // User — пользователь системы.
 type User struct {
-	ID         string
-	ExternalID string // идентификатор из мессенджера / TUI
+	ID         string  `json:"id"`
+	ExternalID *string `json:"external_id"` // идентификатор из мессенджера / TUI
 	CreatedAt  time.Time
 }

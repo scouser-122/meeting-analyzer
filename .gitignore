@@ -1,2 +1,5 @@
 .DS_Store
 tech_task.md
+cmd/server/config.yaml
+cmd/server/data/
+.vscode/launch.json

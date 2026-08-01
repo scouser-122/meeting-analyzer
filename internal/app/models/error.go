@@ -1,4 +1,4 @@
-package model
+package models
 
 import (
 	"errors"
@@ -6,6 +6,23 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// CustomErr specifies custom app error with code and message
+type CustomErr struct {
+	// Message error message
+	Message string
+
+	// HTTPStatus is status code which should be returned if such error happen
+	HTTPStatus int
+}
+
+// Error func to implement error interface
+func (e *CustomErr) Error() string {
+	return e.Message
+}
+
+// UnexpectedErrorMessage message for unexpecter app errors, usualy leads to returning InternalServerError
+const UnexpectedErrorMessage = "unexpected error happen"
 
 // ErrorClassification defines error class for specific handling
 type ErrorClassification int

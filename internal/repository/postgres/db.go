@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"reflect"
 
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -24,13 +27,13 @@ type DBPoolInterface interface {
 	Close()
 
 	// Exec makes request which changes DB content
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 
 	// QueryRow takes one row by request with specified parameters
-	QueryRow(ctx context.Context, sql string, arguments ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
 
 	// Query takes multiple rows by request with specified parameters
-	Query(ctx context.Context, sql string, arguments ...interface{}) (pgx.Rows, error)
+	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
 
 	// Begin creates DB transaction
 	Begin(ctx context.Context) (pgx.Tx, error)
@@ -204,7 +207,7 @@ func (db *PostgresDatabase) Begin(ctx context.Context) (pgx.Tx, error) {
 	return tx, err
 }
 
-func isNil(i interface{}) bool {
+func isNil(i any) bool {
 	if i == nil {
 		return true
 	}
