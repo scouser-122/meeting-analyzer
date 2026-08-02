@@ -35,3 +35,11 @@ func (t *TasksService) CreateNewTask(ctx context.Context, meetingID string) (*mo
 func (t *TasksService) UpdateStatus(ctx context.Context, taskID string, status model.TaskStatus, errorMessage *string) error {
 	return t.tasksRepo.UpdateStatus(ctx, taskID, status, errorMessage)
 }
+
+func (t *TasksService) GetStatus(ctx context.Context, meetingID string) (model.TaskStatus, error) {
+	task, err := t.tasksRepo.GetByMeetingID(ctx, meetingID)
+	if err != nil {
+		return "", err
+	}
+	return task.Status, nil
+}

@@ -178,3 +178,7 @@ func newFileID() (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+func (s *MeetingsService) GetAllByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
+	return s.meetingsRepo.GetByUserID(ctx, userID)
+}

@@ -27,3 +27,14 @@ func NewSummaryService(
 func (s *SummaryService) AddNewSummary(ctx context.Context, summary *model.Summary) error {
 	return s.summaryRepo.Create(ctx, summary)
 }
+
+func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*string, error) {
+	summary, err := s.summaryRepo.GetByMeetingID(ctx, meetingID)
+	if err != nil {
+		if err.Error() == "summary not found" {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &summary.Text, nil
+}

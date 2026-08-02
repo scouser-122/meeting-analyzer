@@ -94,3 +94,24 @@ func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.M
 	}
 	return err
 }
+
+const meetingsPageSize = 10
+
+func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	result := []*model.Meeting{}
+	for orders, err := range r.repo.GetAllConditional(
+		ctx,
+		"WHERE user_id = $1",
+		[]any{userID},
+		"created_at DESC",
+		meetingsPageSize,
+	) {
+		if err != nil {
+			logger.Error(err.Error())
+			return []*model.Meeting{}, err
+		}
+		result = append(result, orders...)
+	}
+	return result, nil
+}

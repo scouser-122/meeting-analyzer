@@ -20,6 +20,8 @@ func InitializeHandlers(
 	serverConfig *config.ServerConfig,
 	usersService *service.UsersService,
 	meetingsService *service.MeetingsService,
+	tasksService *service.TasksService,
+	summaryService *service.SummaryService,
 	meetingProcessor *worker.MeetingProcessor,
 ) []Handler {
 	handlers := []Handler{}
@@ -27,8 +29,15 @@ func InitializeHandlers(
 	usersHandler := NewUsersHandler(usersService)
 	handlers = append(handlers, Handler{"/api/users/register", usersHandler.HandleRegister})
 
-	meetingsHandler := NewMeetingsHandler(meetingsService, meetingProcessor, serverConfig)
+	meetingsHandler := NewMeetingsHandler(
+		meetingsService,
+		tasksService,
+		summaryService,
+		meetingProcessor,
+		serverConfig,
+	)
 	handlers = append(handlers, Handler{"/api/meetings/load", meetingsHandler.HandleLoad})
+	handlers = append(handlers, Handler{"/api/meetings", meetingsHandler.HandleList})
 
 	return handlers
 }

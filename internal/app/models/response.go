@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 // CommonResponse defines common response structure with status and message
@@ -60,4 +61,12 @@ func NewSuccessResponseBufferWithData(message string, data any) []byte {
 		return []byte{}
 	}
 	return buf.Bytes()
+}
+
+type MeetingResponseData struct {
+	ID        string    `json:"id"`
+	Name      *string   `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	Status    string    `json:"status"`
+	Summary   *string   `json:"summary,omitempty"`
 }

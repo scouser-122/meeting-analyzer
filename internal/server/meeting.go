@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -18,6 +19,8 @@ import (
 // MeetingsHandler specifies http request handler for requests to Meetings service
 type MeetingsHandler struct {
 	meetingsService  *service.MeetingsService
+	tasksService     *service.TasksService
+	summaryService   *service.SummaryService
 	meetingProcessor *worker.MeetingProcessor
 	maxUploadSize    int64
 }
@@ -25,11 +28,15 @@ type MeetingsHandler struct {
 // NewMeetingsHandler creates and returns pointer to new MeetingsHandler
 func NewMeetingsHandler(
 	meetingsService *service.MeetingsService,
+	tasksService *service.TasksService,
+	summaryService *service.SummaryService,
 	meetingProcessor *worker.MeetingProcessor,
 	serverConfig *config.ServerConfig,
 ) *MeetingsHandler {
 	return &MeetingsHandler{
 		meetingsService:  meetingsService,
+		tasksService:     tasksService,
+		summaryService:   summaryService,
 		meetingProcessor: meetingProcessor,
 		maxUploadSize:    *serverConfig.MaxUploadSize,
 	}
@@ -92,4 +99,65 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusAccepted)
 	res.Write(models.NewSuccessResponseBufferWithData(successMessage, meeting))
+}
+
+// HandleLoad processes meetings load request
+func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	userID := req.URL.Query().Get("user_id")
+
+	meetings, err := h.meetingsService.GetAllByUserID(req.Context(), userID)
+	if err != nil {
+		var customErr *models.CustomErr
+		if errors.As(err, &customErr) {
+			models.WriteResponseError(customErr, res)
+			return
+		} else {
+			res.WriteHeader(http.StatusInternalServerError)
+			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+			return
+		}
+	}
+
+	meetingsData := make([]models.MeetingResponseData, len(meetings))
+	for i := 0; i < len(meetings); i++ {
+		meeting := meetings[i]
+		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
+		if err != nil {
+			logger.Error("error getting meeting status", "err", err)
+			res.WriteHeader(http.StatusInternalServerError)
+			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		}
+		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
+		if err != nil {
+			logger.Error("error getting meeting summary", "err", err)
+			res.WriteHeader(http.StatusInternalServerError)
+			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		}
+		meetingsData[i] = models.MeetingResponseData{
+			ID:        meeting.ID,
+			Name:      meeting.Name,
+			CreatedAt: meeting.CreatedAt,
+			Status:    string(status),
+			Summary:   summary,
+		}
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(meetingsData); err != nil {
+		logger.Error("error encoding response ", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	logger.Info("meetings list successfully obtained")
+	res.WriteHeader(http.StatusOK)
+	res.Write(buf.Bytes())
 }

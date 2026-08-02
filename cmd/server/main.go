@@ -27,7 +27,7 @@ func main() {
 	if *serverConfig.Environment == "prod" {
 		var err error
 		fileHandler, err = rotoslog.NewHandler(
-			rotoslog.FilePrefix("gophermart-"),
+			rotoslog.FilePrefix("metting-analyzer-"),
 			rotoslog.MaxFileSize(32*1024*1024),
 			rotoslog.MaxRotatedFiles(3),
 		)
@@ -84,6 +84,8 @@ func main() {
 		&serverConfig,
 		usersService,
 		meetingsService,
+		tasksService,
+		summaryService,
 		meetingProcessor,
 	)
 
