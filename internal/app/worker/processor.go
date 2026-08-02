@@ -1,0 +1,114 @@
+package worker
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/scouser-122/meeting-analyzer/internal/app/service"
+	"github.com/scouser-122/meeting-analyzer/internal/client/processors"
+	"github.com/scouser-122/meeting-analyzer/internal/config"
+	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
+)
+
+type MeetingProcessor struct {
+	meetingService       *service.MeetingsService
+	tasksService         *service.TasksService
+	transcriptionService *service.TranscriptionService
+	audioProcessor       processors.AudioProcessor
+	Meetins              chan model.Meeting
+}
+
+func NewMeetingProcessor(
+	meetingService *service.MeetingsService,
+	tasksService *service.TasksService,
+	transcriptionService *service.TranscriptionService,
+	audioProcessor processors.AudioProcessor,
+	serverConfig *config.ServerConfig,
+) *MeetingProcessor {
+	return &MeetingProcessor{
+		meetingService:       meetingService,
+		tasksService:         tasksService,
+		transcriptionService: transcriptionService,
+		audioProcessor:       audioProcessor,
+		Meetins:              make(chan model.Meeting, *serverConfig.ProcessorLimit),
+	}
+}
+
+func (m *MeetingProcessor) Run() {
+	stopChanSend := make(chan struct{})
+	go m.ProccessorContinousWorker(stopChanSend)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	go func() {
+		sig := <-sigChan
+		slog.Info("shutdown signal received. stopping worker...", "sig", sig)
+		close(stopChanSend)
+	}()
+}
+
+func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	for {
+		stopProcessing := false
+		select {
+		case <-stopCh:
+			slog.Info("stop processing meetings")
+			wg.Done()
+			stopProcessing = true
+		default:
+			meeting := <-m.Meetins
+			go func() {
+				m.processMeeting(&meeting)
+			}()
+		}
+		if stopProcessing {
+			break
+		}
+	}
+	wg.Wait()
+	slog.Info("processor worker stopped")
+}
+
+func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
+	slog.Info("start process meeting", "name", meeting.Name)
+
+	ctx := context.Background()
+
+	task, err := m.tasksService.CreateNewTask(ctx, meeting.ID)
+	if err != nil {
+		slog.Error("processor can't create task", "err", err, "meetingID", meeting.ID)
+		return
+	}
+	taskID := task.ID
+	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusProcessing, nil)
+
+	transcriptionText, err := m.audioProcessor.TranscribeAudio(meeting)
+	if err != nil {
+		slog.Error("processor can't transcribe audio", "err", err, "meetingID", meeting.ID)
+		errMessage := err.Error()
+		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+		return
+	}
+
+	err = m.transcriptionService.AddNewTranscription(ctx, &model.Transcription{
+		ID:        uuid.New().String(),
+		MeetingID: meeting.ID,
+		Text:      transcriptionText,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		slog.Error("processor can't save transcription", "err", err, "meetingID", meeting.ID)
+		errMessage := err.Error()
+		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+		return
+	}
+	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusTranscribed, nil)
+
+}

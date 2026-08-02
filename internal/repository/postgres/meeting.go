@@ -61,7 +61,7 @@ func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (
 
 func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*model.Meeting, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	user, err := r.repo.GetByID(ctx, id)
+	meeting, err := r.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, &models.CustomErr{Message: "meeting not found", HTTPStatus: http.StatusBadRequest}
@@ -69,7 +69,7 @@ func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*mo
 		logger.Error(err.Error())
 		return nil, err
 	}
-	return user, nil
+	return meeting, nil
 }
 
 func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.Meeting) error {

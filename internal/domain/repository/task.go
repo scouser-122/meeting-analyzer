@@ -8,8 +8,8 @@ import (
 
 // TaskRepository — интерфейс доступа к данным задач обработки.
 type TaskRepository interface {
-	Create(ctx context.Context, task *model.Task) error
+	Create(ctx context.Context, meetingID string) (*model.Task, error)
 	GetByID(ctx context.Context, id string) (*model.Task, error)
 	GetByMeetingID(ctx context.Context, meetingID string) (*model.Task, error)
-	UpdateStatus(ctx context.Context, id string, status model.TaskStatus) error
+	UpdateStatus(ctx context.Context, id string, status model.TaskStatus, errorMessage *string) error
 }

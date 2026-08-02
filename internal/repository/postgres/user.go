@@ -75,7 +75,6 @@ func (s *PostgresUserRepository) GetByID(ctx context.Context, id string) (*model
 	return user, nil
 }
 
-// Get obtains user from storage by external ID
 func (s *PostgresUserRepository) GetByExternalID(ctx context.Context, externalID string) (*model.User, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	user, err := s.repo.GetByParameter(ctx, "external_id", externalID)

@@ -35,6 +35,12 @@ type ServerConfig struct {
 	// MaxUploadSize specifies max meeting audio file upload size
 	MaxUploadSize *int64 `env:"MAX_UPLOAD_SIZE" yaml:"max_upload_size"`
 
+	// MaxUploadSize specifies limit for simultaneous metting processing jobs
+	ProcessorLimit *int64 `env:"PROCESSOR_LIMIT" yaml:"processor_limit"`
+
+	// SaluteSpeech specifies config to interact with SaluteSpeech API
+	SaluteSpeech *SaluteSpeechConfig `yaml:"salute_speech"`
+
 	// ConfigFile config filein yaml format path
 	ConfigFile *string
 }
@@ -49,12 +55,15 @@ func DefaultServerConfig() ServerConfig {
 		DBDataSourceName: new(string),
 		ShutdownTimeout:  new(time.Duration),
 		ConfigFile:       new(string),
+		ProcessorLimit:   new(int64),
+		SaluteSpeech:     new(SaluteSpeechConfig),
 	}
 	*result.RunAddr = "localhost:8080"
 	*result.LogLevel = "info"
 	*result.Environment = "dev"
 	*result.DBDataSourceName = "postgres://postgres:password@localhost:5432/mydb?sslmode=disable"
 	*result.ShutdownTimeout = 30 * time.Second
+	*result.ProcessorLimit = 10
 	return result
 }
 
