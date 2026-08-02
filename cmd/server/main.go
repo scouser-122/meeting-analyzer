@@ -10,6 +10,9 @@ import (
 
 	"github.com/alchemy/rotoslog"
 	"github.com/scouser-122/meeting-analyzer/internal/app/service"
+	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
+	"github.com/scouser-122/meeting-analyzer/internal/client/gigachat"
+	"github.com/scouser-122/meeting-analyzer/internal/client/salutespeech"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
@@ -54,10 +57,34 @@ func main() {
 	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
 	meetingsService := service.NewMeetingsService(meetingsRepo, usersRepo, repositoryUtils, &serverConfig)
 
+	tasksRepo := postgres.NewPostgresTaskRepository(&database)
+	tasksService := service.NewTasksService(tasksRepo, repositoryUtils)
+
+	transcriptionsRepo := postgres.NewPostgresTranscriptionRepository(&database)
+	transcriptionsService := service.NewTranscriptionService(transcriptionsRepo, repositoryUtils)
+
+	summaryRepo := postgres.NewPostgresSummaryRepository(&database)
+	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
+
+	audioProcessor := salutespeech.NewSaluteSpeechClient(&serverConfig)
+	summaryProcessor := gigachat.NewGigaChatClient(&serverConfig)
+
+	meetingProcessor := worker.NewMeetingProcessor(
+		meetingsService,
+		tasksService,
+		transcriptionsService,
+		summaryService,
+		audioProcessor,
+		summaryProcessor,
+		&serverConfig,
+	)
+	meetingProcessor.Run()
+
 	handlers := server.InitializeHandlers(
 		&serverConfig,
 		usersService,
 		meetingsService,
+		meetingProcessor,
 	)
 
 	server := server.NewServer(&serverConfig)

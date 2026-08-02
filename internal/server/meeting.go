@@ -9,6 +9,7 @@ import (
 
 	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/app/service"
+	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
@@ -16,18 +17,21 @@ import (
 
 // MeetingsHandler specifies http request handler for requests to Meetings service
 type MeetingsHandler struct {
-	meetingsService *service.MeetingsService
-	maxUploadSize   int64
+	meetingsService  *service.MeetingsService
+	meetingProcessor *worker.MeetingProcessor
+	maxUploadSize    int64
 }
 
 // NewMeetingsHandler creates and returns pointer to new MeetingsHandler
 func NewMeetingsHandler(
 	meetingsService *service.MeetingsService,
+	meetingProcessor *worker.MeetingProcessor,
 	serverConfig *config.ServerConfig,
 ) *MeetingsHandler {
 	return &MeetingsHandler{
-		meetingsService: meetingsService,
-		maxUploadSize:   *serverConfig.MaxUploadSize,
+		meetingsService:  meetingsService,
+		meetingProcessor: meetingProcessor,
+		maxUploadSize:    *serverConfig.MaxUploadSize,
 	}
 }
 
@@ -80,6 +84,8 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 			return
 		}
 	}
+
+	h.meetingProcessor.Meetins <- meeting
 
 	successMessage := "meeting file successfully uploaded"
 	logger.Info(successMessage, slog.String("id", meeting.ID))

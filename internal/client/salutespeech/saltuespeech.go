@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 )
@@ -23,7 +22,6 @@ type SaluteSpeechClient struct {
 
 func NewSaluteSpeechClient(
 	serverConfig *config.ServerConfig,
-	meetingService *service.MeetingsService,
 ) *SaluteSpeechClient {
 	return &SaluteSpeechClient{
 		config: serverConfig.SaluteSpeech,
@@ -175,6 +173,7 @@ func (s *SaluteSpeechClient) createRecognizeTask(fileID string) (string, error) 
 		return "", fmt.Errorf("salute speech client failed to start recognize, status: %s, fileID: %s", response.Result.Status, fileID)
 	}
 
+	slog.Info("salute speech client successfully create recognize task", "fileID", fileID)
 	return response.Result.ID, nil
 }
 
@@ -186,12 +185,10 @@ func (s *SaluteSpeechClient) getRecognizeStatus(taskID string) (model.TaskStatus
 		return "", err
 	}
 
-	var status model.TaskStatus
 	requestID := uuid.New().String()
 	resp, err := client.R().
 		SetHeader("X-Request-ID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
-		SetResult(&status).
 		Get(fmt.Sprintf("%s/rest/v1/task:get?id=%s", s.config.ServerAddress, taskID))
 
 	if err != nil {
@@ -200,6 +197,8 @@ func (s *SaluteSpeechClient) getRecognizeStatus(taskID string) (model.TaskStatus
 	if resp.StatusCode() != http.StatusOK {
 		return "", fmt.Errorf("salute speech client failed to get recognize status, http status: %s, taskID: %s", resp.StatusCode(), taskID)
 	}
+	var status model.TaskStatus
+	status = model.TaskStatus(resp.Body())
 	return status, nil
 }
 
@@ -234,13 +233,11 @@ func (s *SaluteSpeechClient) getFileWithResult(fileID string) (string, error) {
 }
 
 func (s *SaluteSpeechClient) getTranscriptionFromFile(filePath string) (string, error) {
-	// 1. Read the file into a byte slice
-	data, err := os.ReadFile("config.json")
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("salute speech client failed to open recognize file, err: %s, filePath: %s", err, filePath)
 	}
 
-	// 2. Unmarshal the byte slice into a struct instance
 	var textData SaluteSpeechRecognizedText
 	err = json.Unmarshal(data, &textData)
 	if err != nil {

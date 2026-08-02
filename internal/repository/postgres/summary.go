@@ -13,33 +13,33 @@ import (
 )
 
 // PostgresTranscriptionRepository implements TaskRepositoru interface to store tasks data in Postgres DB
-type PostgresTranscriptionRepository struct {
+type PostgresSummaryRepository struct {
 	Database *PostgresDatabase
-	repo     *GenericRepository[model.Transcription]
+	repo     *GenericRepository[model.Summary]
 }
 
 // NewPostgresTaskRepository creates Postgres tasks storage
-func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscriptionRepository {
-	mapper := func(row pgx.Row) (*model.Transcription, error) {
-		var transcription model.Transcription
+func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryRepository {
+	mapper := func(row pgx.Row) (*model.Summary, error) {
+		var summary model.Summary
 		err := row.Scan(
-			&transcription.ID,
-			&transcription.MeetingID,
-			&transcription.Text,
-			&transcription.CreatedAt,
+			&summary.ID,
+			&summary.MeetingID,
+			&summary.Text,
+			&summary.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
-		return &transcription, err
+		return &summary, err
 	}
-	return &PostgresTranscriptionRepository{
+	return &PostgresSummaryRepository{
 		Database: db,
-		repo:     NewGenericRepository(db, "transcriptions", "id", mapper),
+		repo:     NewGenericRepository(db, "summary", "id", mapper),
 	}
 }
 
-func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcription *model.Transcription) error {
+func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.Summary) error {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -49,7 +49,7 @@ func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcript
 	_, err := repo.Create(
 		ctx,
 		"id,meeting_id,text,created_at",
-		transcription.ID, transcription.MeetingID, transcription.Text, time.Now(),
+		summary.ID, summary.MeetingID, summary.Text, time.Now(),
 	)
 	if err != nil {
 		logger.Error(err.Error())
@@ -58,15 +58,15 @@ func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcript
 	return nil
 }
 
-func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Transcription, error) {
+func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Summary, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	transcription, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
+	summary, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("transcription not found")
+			return nil, fmt.Errorf("summary not found")
 		}
 		logger.Error(err.Error())
 		return nil, err
 	}
-	return transcription, nil
+	return summary, nil
 }

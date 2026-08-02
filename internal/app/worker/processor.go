@@ -20,23 +20,29 @@ type MeetingProcessor struct {
 	meetingService       *service.MeetingsService
 	tasksService         *service.TasksService
 	transcriptionService *service.TranscriptionService
+	summaryService       *service.SummaryService
 	audioProcessor       processors.AudioProcessor
-	Meetins              chan model.Meeting
+	summarizeProcessor   processors.SummarizeProcessor
+	Meetins              chan *model.Meeting
 }
 
 func NewMeetingProcessor(
 	meetingService *service.MeetingsService,
 	tasksService *service.TasksService,
 	transcriptionService *service.TranscriptionService,
+	summaryService *service.SummaryService,
 	audioProcessor processors.AudioProcessor,
+	summarizeProcessor processors.SummarizeProcessor,
 	serverConfig *config.ServerConfig,
 ) *MeetingProcessor {
 	return &MeetingProcessor{
 		meetingService:       meetingService,
 		tasksService:         tasksService,
 		transcriptionService: transcriptionService,
+		summaryService:       summaryService,
 		audioProcessor:       audioProcessor,
-		Meetins:              make(chan model.Meeting, *serverConfig.ProcessorLimit),
+		summarizeProcessor:   summarizeProcessor,
+		Meetins:              make(chan *model.Meeting, *serverConfig.ProcessorLimit),
 	}
 }
 
@@ -52,9 +58,12 @@ func (m *MeetingProcessor) Run() {
 	}()
 }
 
+const maxInFlight = 3
+
 func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
 	var wg sync.WaitGroup
 	wg.Add(1)
+	semMaxLimit := make(chan struct{}, maxInFlight)
 	for {
 		stopProcessing := false
 		select {
@@ -64,9 +73,11 @@ func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
 			stopProcessing = true
 		default:
 			meeting := <-m.Meetins
-			go func() {
-				m.processMeeting(&meeting)
-			}()
+			semMaxLimit <- struct{}{}
+			go func(meeting *model.Meeting) {
+				defer func() { <-semMaxLimit }()
+				m.processMeeting(meeting)
+			}(meeting)
 		}
 		if stopProcessing {
 			break
@@ -77,7 +88,7 @@ func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
 }
 
 func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
-	slog.Info("start process meeting", "name", meeting.Name)
+	slog.Info("start process meeting", "name", *meeting.Name, "meetingID", meeting.ID)
 
 	ctx := context.Background()
 
@@ -111,4 +122,29 @@ func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
 	}
 	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusTranscribed, nil)
 
+	summary, err := m.summarizeProcessor.SummarizeTranscription(meeting, transcriptionText)
+	if err != nil {
+		slog.Error("processor can't summarize transcription", "err", err, "meetingID", meeting.ID)
+		errMessage := err.Error()
+		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+		return
+	}
+	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusSummarized, nil)
+
+	err = m.summaryService.AddNewSummary(ctx, &model.Summary{
+		ID:        uuid.New().String(),
+		MeetingID: meeting.ID,
+		Text:      summary,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		slog.Error("processor can't save summarization", "err", err, "meetingID", meeting.ID)
+		errMessage := err.Error()
+		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+		return
+	}
+
+	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusCompleted, nil)
+
+	slog.Info("meeting successfully processed", "name", *meeting.Name, "meetingID", meeting.ID)
 }

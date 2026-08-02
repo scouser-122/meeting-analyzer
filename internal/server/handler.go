@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/scouser-122/meeting-analyzer/internal/app/service"
+	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 )
 
@@ -19,13 +20,14 @@ func InitializeHandlers(
 	serverConfig *config.ServerConfig,
 	usersService *service.UsersService,
 	meetingsService *service.MeetingsService,
+	meetingProcessor *worker.MeetingProcessor,
 ) []Handler {
 	handlers := []Handler{}
 
 	usersHandler := NewUsersHandler(usersService)
 	handlers = append(handlers, Handler{"/api/users/register", usersHandler.HandleRegister})
 
-	meetingsHandler := NewMeetingsHandler(meetingsService, serverConfig)
+	meetingsHandler := NewMeetingsHandler(meetingsService, meetingProcessor, serverConfig)
 	handlers = append(handlers, Handler{"/api/meetings/load", meetingsHandler.HandleLoad})
 
 	return handlers

@@ -41,6 +41,9 @@ type ServerConfig struct {
 	// SaluteSpeech specifies config to interact with SaluteSpeech API
 	SaluteSpeech *SaluteSpeechConfig `yaml:"salute_speech"`
 
+	// GigaChat specifies config to interact with GigaChat API
+	GigaChat *GigaChatConfig `yaml:"giga_chat"`
+
 	// ConfigFile config filein yaml format path
 	ConfigFile *string
 }
@@ -57,6 +60,7 @@ func DefaultServerConfig() ServerConfig {
 		ConfigFile:       new(string),
 		ProcessorLimit:   new(int64),
 		SaluteSpeech:     new(SaluteSpeechConfig),
+		GigaChat:         new(GigaChatConfig),
 	}
 	*result.RunAddr = "localhost:8080"
 	*result.LogLevel = "info"
