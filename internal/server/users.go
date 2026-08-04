@@ -2,15 +2,14 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
 // UsersHandler specifies http request handler for requests to Users service
@@ -27,14 +26,15 @@ func NewUsersHandler(
 	}
 }
 
-// HandleRegister processes user registration request
-func (h *UsersHandler) HandleRegister(res http.ResponseWriter, req *http.Request) {
+// HandleStart processes user registration request
+func (h *UsersHandler) HandleStart(res http.ResponseWriter, req *http.Request) {
 	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	res.Header().Set("Content-Type", "application/json")
 
 	bodyBuf, err := io.ReadAll(req.Body)
 	if err != nil {
 		logger.Error("cannot read request body", "err", err)
-		res.Header().Set("content-type", "application/json")
 		res.WriteHeader(http.StatusBadRequest)
 		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
 		return
@@ -43,7 +43,6 @@ func (h *UsersHandler) HandleRegister(res http.ResponseWriter, req *http.Request
 	var user model.User
 	if err := json.Unmarshal(bodyBuf, &user); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
-		res.Header().Set("content-type", "application/json")
 		res.WriteHeader(http.StatusBadRequest)
 		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
 		return
@@ -51,15 +50,8 @@ func (h *UsersHandler) HandleRegister(res http.ResponseWriter, req *http.Request
 
 	err = h.usersService.Register(req.Context(), user.ID)
 	if err != nil {
-		var customErr *models.CustomErr
-		if errors.As(err, &customErr) {
-			models.WriteResponseError(customErr, res)
-			return
-		} else {
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
-			return
-		}
+		handleServiceError(err, res)
+		return
 	}
 
 	// authToken, err := h.jwtService.GenerateJWT(registeredUser.Login)
@@ -74,7 +66,6 @@ func (h *UsersHandler) HandleRegister(res http.ResponseWriter, req *http.Request
 
 	successMessage := "user successfully registered"
 	logger.Info(successMessage, slog.String("id", user.ID))
-	res.Header().Set("content-type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	res.Write(models.NewSuccessResponseBuffer(successMessage))
 }

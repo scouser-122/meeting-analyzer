@@ -38,3 +38,7 @@ func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*str
 	}
 	return &summary.Text, nil
 }
+
+func (s *SummaryService) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
+	return s.summaryRepo.FindByTextContains(ctx, userID, textPart)
+}

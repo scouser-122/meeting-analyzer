@@ -67,7 +67,7 @@ func DefaultServerConfig() ServerConfig {
 	*result.Environment = "dev"
 	*result.DBDataSourceName = "postgres://postgres:password@localhost:5432/mydb?sslmode=disable"
 	*result.ShutdownTimeout = 30 * time.Second
-	*result.ProcessorLimit = 10
+	*result.ProcessorLimit = 5
 	return result
 }
 

@@ -6,6 +6,7 @@ import "time"
 type Transcription struct {
 	ID        string
 	MeetingID string
+	UserID    string
 	Text      string
 	CreatedAt time.Time
 }

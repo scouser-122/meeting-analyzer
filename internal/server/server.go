@@ -38,7 +38,7 @@ func (s *Server) Init(handlers []Handler) error {
 
 func (s *Server) addHandlersForRouter(r *http.ServeMux, handlers *[]Handler, config *config.ServerConfig) error {
 	for _, h := range *handlers {
-		r.HandleFunc(h.URLPathPattern, h.HandlerFn)
+		r.HandleFunc(h.URLPathPattern, RequestLogger(h.HandlerFn, config))
 	}
 	return nil
 }

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
 	"github.com/scouser-122/meeting-analyzer/internal/client/salutespeech"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
 var jwtService *service.JwtService
@@ -116,10 +117,15 @@ func handleGetFileWithResult(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("received request via /rest/v1/task:get")
 
+	content, err := os.ReadFile("./transcription.txt")
+	if err != nil {
+		log.Fatalf("Failed to read file: %s", err)
+	}
+
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	if err := enc.Encode(salutespeech.SaluteSpeechRecognizedText{
-		Text: "Transcription text",
+		Text: string(content),
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}

@@ -9,14 +9,14 @@ import (
 	"syscall"
 
 	"github.com/alchemy/rotoslog"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
-	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
 	"github.com/scouser-122/meeting-analyzer/internal/client/gigachat"
 	"github.com/scouser-122/meeting-analyzer/internal/client/salutespeech"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
 	"github.com/scouser-122/meeting-analyzer/internal/server"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
 func main() {
@@ -49,45 +49,7 @@ func main() {
 	}
 	defer database.Close()
 
-	repositoryUtils := postgres.NewPostgresRepositoryUtils(&database)
-
-	usersRepo := postgres.NewPostgresUserRepository(&database)
-	usersService := service.NewUsersService(usersRepo)
-
-	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
-	meetingsService := service.NewMeetingsService(meetingsRepo, usersRepo, repositoryUtils, &serverConfig)
-
-	tasksRepo := postgres.NewPostgresTaskRepository(&database)
-	tasksService := service.NewTasksService(tasksRepo, repositoryUtils)
-
-	transcriptionsRepo := postgres.NewPostgresTranscriptionRepository(&database)
-	transcriptionsService := service.NewTranscriptionService(transcriptionsRepo, repositoryUtils)
-
-	summaryRepo := postgres.NewPostgresSummaryRepository(&database)
-	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
-
-	audioProcessor := salutespeech.NewSaluteSpeechClient(&serverConfig)
-	summaryProcessor := gigachat.NewGigaChatClient(&serverConfig)
-
-	meetingProcessor := worker.NewMeetingProcessor(
-		meetingsService,
-		tasksService,
-		transcriptionsService,
-		summaryService,
-		audioProcessor,
-		summaryProcessor,
-		&serverConfig,
-	)
-	meetingProcessor.Run()
-
-	handlers := server.InitializeHandlers(
-		&serverConfig,
-		usersService,
-		meetingsService,
-		tasksService,
-		summaryService,
-		meetingProcessor,
-	)
+	handlers := initServicesAndGetHandlers(database, &serverConfig)
 
 	server := server.NewServer(&serverConfig)
 	if err := server.Init(handlers); err != nil {
@@ -107,4 +69,47 @@ func main() {
 
 	server.Shutdown()
 	slog.Info("server gracefully stopped")
+}
+
+func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig *config.ServerConfig) []server.Handler {
+	repositoryUtils := postgres.NewPostgresRepositoryUtils(&database)
+
+	usersRepo := postgres.NewPostgresUserRepository(&database)
+	usersService := service.NewUsersService(usersRepo)
+
+	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
+	meetingsService := service.NewMeetingsService(meetingsRepo, usersRepo, repositoryUtils, serverConfig)
+
+	tasksRepo := postgres.NewPostgresTaskRepository(&database)
+	tasksService := service.NewTasksService(tasksRepo, repositoryUtils)
+
+	transcriptionsRepo := postgres.NewPostgresTranscriptionRepository(&database)
+	transcriptionsService := service.NewTranscriptionService(transcriptionsRepo, repositoryUtils)
+
+	summaryRepo := postgres.NewPostgresSummaryRepository(&database)
+	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
+
+	audioProcessor := salutespeech.NewSaluteSpeechClient(serverConfig)
+	summaryProcessor := gigachat.NewGigaChatClient(serverConfig)
+
+	meetingProcessor := worker.NewMeetingProcessor(
+		meetingsService,
+		tasksService,
+		transcriptionsService,
+		summaryService,
+		audioProcessor,
+		summaryProcessor,
+		serverConfig,
+	)
+	meetingProcessor.Run()
+
+	return server.InitializeHandlers(
+		serverConfig,
+		usersService,
+		meetingsService,
+		tasksService,
+		transcriptionsService,
+		summaryService,
+		meetingProcessor,
+	)
 }

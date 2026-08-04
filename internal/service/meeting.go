@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // MeetingsService service to work with meetings
@@ -179,6 +179,14 @@ func newFileID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func (s *MeetingsService) GetByID(ctx context.Context, meetingID string) (*model.Meeting, error) {
+	return s.meetingsRepo.GetByID(ctx, meetingID)
+}
+
 func (s *MeetingsService) GetAllByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
 	return s.meetingsRepo.GetByUserID(ctx, userID)
+}
+
+func (s *MeetingsService) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
+	return s.meetingsRepo.FindByNameContains(ctx, userID, namePart)
 }

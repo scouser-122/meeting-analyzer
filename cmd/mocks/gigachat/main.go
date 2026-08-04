@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
 	"github.com/scouser-122/meeting-analyzer/internal/client/gigachat"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
 var jwtService *service.JwtService
@@ -59,7 +59,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			{
 				Message: gigachat.GigaChatCompletionsMessage{
 					Role:    "assistant",
-					Content: "Meeting summary",
+					Content: "На встрече обсуждали добавление нового параметра priority в метод создания заказа. Договорились реализовать и протестировать в этот же день.",
 				},
 			},
 		},

@@ -1,11 +1,13 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
-	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
 // Handler represents an HTTP handler configuration with method, path pattern, and handler function.
@@ -21,23 +23,39 @@ func InitializeHandlers(
 	usersService *service.UsersService,
 	meetingsService *service.MeetingsService,
 	tasksService *service.TasksService,
+	transcriptionService *service.TranscriptionService,
 	summaryService *service.SummaryService,
 	meetingProcessor *worker.MeetingProcessor,
 ) []Handler {
 	handlers := []Handler{}
 
 	usersHandler := NewUsersHandler(usersService)
-	handlers = append(handlers, Handler{"/api/users/register", usersHandler.HandleRegister})
+	handlers = append(handlers, Handler{"/api/users/start", usersHandler.HandleStart})
 
 	meetingsHandler := NewMeetingsHandler(
 		meetingsService,
 		tasksService,
+		transcriptionService,
 		summaryService,
 		meetingProcessor,
 		serverConfig,
 	)
 	handlers = append(handlers, Handler{"/api/meetings/load", meetingsHandler.HandleLoad})
-	handlers = append(handlers, Handler{"/api/meetings", meetingsHandler.HandleList})
+	handlers = append(handlers, Handler{"/api/meetings/list", meetingsHandler.HandleList})
+	handlers = append(handlers, Handler{"/api/meetings/status", meetingsHandler.HandleStatus})
+	handlers = append(handlers, Handler{"/api/meetings/transcription", meetingsHandler.HandleTranscription})
 
 	return handlers
+}
+
+func handleServiceError(err error, res http.ResponseWriter) {
+	var customErr *models.CustomErr
+	if errors.As(err, &customErr) {
+		models.WriteResponseError(customErr, res)
+		return
+	} else {
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
 }

@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // RepositoryUtils declares interface with repository utils

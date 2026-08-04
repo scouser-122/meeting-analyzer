@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresMeetingRepository implements MeetingRepository interface to store meetings data in Postgres DB
@@ -64,7 +64,7 @@ func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*mo
 	meeting, err := r.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &models.CustomErr{Message: "meeting not found", HTTPStatus: http.StatusBadRequest}
+			return nil, &models.CustomErr{Message: "meeting not found", HTTPStatus: http.StatusNotFound}
 		}
 		logger.Error(err.Error())
 		return nil, err
@@ -104,6 +104,25 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 		ctx,
 		"WHERE user_id = $1",
 		[]any{userID},
+		"created_at DESC",
+		meetingsPageSize,
+	) {
+		if err != nil {
+			logger.Error(err.Error())
+			return []*model.Meeting{}, err
+		}
+		result = append(result, orders...)
+	}
+	return result, nil
+}
+
+func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	result := []*model.Meeting{}
+	for orders, err := range r.repo.GetAllConditional(
+		ctx,
+		"WHERE user_id = $1 AND name LIKE '%$2%'",
+		[]any{userID, namePart},
 		"created_at DESC",
 		meetingsPageSize,
 	) {

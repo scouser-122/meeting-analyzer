@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // DataBaseRequestRetry implements retry mechanizm for DB interaction operations

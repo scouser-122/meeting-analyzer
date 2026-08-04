@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresUserRepository implements UserRepository interface to store users data in Postgres DB

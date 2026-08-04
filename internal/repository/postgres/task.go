@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresTaskRepository implements TaskRepositoru interface to store tasks data in Postgres DB

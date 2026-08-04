@@ -3,13 +3,13 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresTranscriptionRepository implements TaskRepositoru interface to store tasks data in Postgres DB
@@ -25,6 +25,7 @@ func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscrip
 		err := row.Scan(
 			&transcription.ID,
 			&transcription.MeetingID,
+			&transcription.UserID,
 			&transcription.Text,
 			&transcription.CreatedAt,
 		)
@@ -48,8 +49,8 @@ func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcript
 	}
 	_, err := repo.Create(
 		ctx,
-		"id,meeting_id,text,created_at",
-		transcription.ID, transcription.MeetingID, transcription.Text, time.Now(),
+		"id,meeting_id,user_id,text,created_at",
+		transcription.ID, transcription.MeetingID, transcription.UserID, transcription.Text, time.Now(),
 	)
 	if err != nil {
 		logger.Error(err.Error())
@@ -63,10 +64,29 @@ func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, me
 	transcription, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("transcription not found")
+			return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
 		}
 		logger.Error(err.Error())
 		return nil, err
 	}
 	return transcription, nil
+}
+
+func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	result := []*model.Transcription{}
+	for transcriptions, err := range r.repo.GetAllConditional(
+		ctx,
+		"WHERE user_id = $1 AND text LIKE '%$2%'",
+		[]any{userID, textPart},
+		"created_at DESC",
+		meetingsPageSize,
+	) {
+		if err != nil {
+			logger.Error(err.Error())
+			return []*model.Transcription{}, err
+		}
+		result = append(result, transcriptions...)
+	}
+	return result, nil
 }

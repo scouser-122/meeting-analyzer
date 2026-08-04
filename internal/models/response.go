@@ -64,9 +64,20 @@ func NewSuccessResponseBufferWithData(message string, data any) []byte {
 }
 
 type MeetingResponseData struct {
-	ID        string    `json:"id"`
-	Name      *string   `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	Status    string    `json:"status"`
-	Summary   *string   `json:"summary,omitempty"`
+	ID                  string    `json:"id"`
+	Name                *string   `json:"name"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at,omitempty"`
+	Status              string    `json:"status"`
+	Summary             *string   `json:"summary,omitempty"`
+	ProcessErrorMessage *string   `json:"process_error_message,omitempty"`
+}
+
+type TranscriptionResponseData struct {
+	Text string `json:"text"`
+}
+
+type FindMeetingRequestData struct {
+	UserID   string `json:"user_id"`
+	KeyWords string `json:"key_words"`
 }

@@ -43,3 +43,11 @@ func (t *TasksService) GetStatus(ctx context.Context, meetingID string) (model.T
 	}
 	return task.Status, nil
 }
+
+func (t *TasksService) GetByMeetingID(ctx context.Context, meetingID string) (*model.Task, error) {
+	task, err := t.tasksRepo.GetByMeetingID(ctx, meetingID)
+	if err != nil {
+		return nil, err
+	}
+	return task, nil
+}

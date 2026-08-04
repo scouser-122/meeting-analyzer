@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresTranscriptionRepository implements TaskRepositoru interface to store tasks data in Postgres DB
@@ -25,6 +25,7 @@ func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryReposito
 		err := row.Scan(
 			&summary.ID,
 			&summary.MeetingID,
+			&summary.UserID,
 			&summary.Text,
 			&summary.CreatedAt,
 		)
@@ -48,8 +49,8 @@ func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.S
 	}
 	_, err := repo.Create(
 		ctx,
-		"id,meeting_id,text,created_at",
-		summary.ID, summary.MeetingID, summary.Text, time.Now(),
+		"id,meeting_id,user_id,text,created_at",
+		summary.ID, summary.MeetingID, summary.UserID, summary.Text, time.Now(),
 	)
 	if err != nil {
 		logger.Error(err.Error())
@@ -69,4 +70,23 @@ func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingI
 		return nil, err
 	}
 	return summary, nil
+}
+
+func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	result := []*model.Summary{}
+	for summaries, err := range r.repo.GetAllConditional(
+		ctx,
+		"WHERE user_id = $1 AND text LIKE '%$2%'",
+		[]any{userID, textPart},
+		"created_at DESC",
+		meetingsPageSize,
+	) {
+		if err != nil {
+			logger.Error(err.Error())
+			return []*model.Summary{}, err
+		}
+		result = append(result, summaries...)
+	}
+	return result, nil
 }

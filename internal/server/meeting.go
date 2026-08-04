@@ -2,43 +2,48 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
-	"github.com/scouser-122/meeting-analyzer/internal/app/worker"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
 // MeetingsHandler specifies http request handler for requests to Meetings service
 type MeetingsHandler struct {
-	meetingsService  *service.MeetingsService
-	tasksService     *service.TasksService
-	summaryService   *service.SummaryService
-	meetingProcessor *worker.MeetingProcessor
-	maxUploadSize    int64
+	meetingsService      *service.MeetingsService
+	tasksService         *service.TasksService
+	transcriptionService *service.TranscriptionService
+	summaryService       *service.SummaryService
+	meetingProcessor     *worker.MeetingProcessor
+	maxUploadSize        int64
 }
 
 // NewMeetingsHandler creates and returns pointer to new MeetingsHandler
 func NewMeetingsHandler(
 	meetingsService *service.MeetingsService,
 	tasksService *service.TasksService,
+	transcriptionService *service.TranscriptionService,
 	summaryService *service.SummaryService,
 	meetingProcessor *worker.MeetingProcessor,
 	serverConfig *config.ServerConfig,
 ) *MeetingsHandler {
 	return &MeetingsHandler{
-		meetingsService:  meetingsService,
-		tasksService:     tasksService,
-		summaryService:   summaryService,
-		meetingProcessor: meetingProcessor,
-		maxUploadSize:    *serverConfig.MaxUploadSize,
+		meetingsService:      meetingsService,
+		tasksService:         tasksService,
+		transcriptionService: transcriptionService,
+		summaryService:       summaryService,
+		meetingProcessor:     meetingProcessor,
+		maxUploadSize:        *serverConfig.MaxUploadSize,
 	}
 }
 
@@ -50,6 +55,8 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	}
 	logger := logger.GetSlogLoggerFromContext(req.Context())
 
+	res.Header().Set("Content-Type", "application/json")
+
 	// Cap total request size before we touch anything
 	req.Body = http.MaxBytesReader(res, req.Body, h.maxUploadSize)
 
@@ -57,16 +64,22 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	// still stream to a temp file, this just controls the buffer.
 	if err := req.ParseMultipartForm(32 << 20); err != nil {
 		if errors.Is(err, io.EOF) {
-			http.Error(res, "file too large", http.StatusRequestEntityTooLarge)
+			logger.Error("file too large", "err", err)
+			res.WriteHeader(http.StatusRequestEntityTooLarge)
+			res.Write(models.NewErrorResponseBuffer("file too large"))
 			return
 		}
-		http.Error(res, "invalid multipart form", http.StatusBadRequest)
+		logger.Error("invalid multipart form", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("invalid multipart form"))
 		return
 	}
 
 	file, header, err := req.FormFile("file")
 	if err != nil {
-		http.Error(res, "missing 'file' field", http.StatusBadRequest)
+		logger.Error("missing 'file' field", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("missing 'file' field"))
 		return
 	}
 	defer file.Close()
@@ -74,34 +87,28 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	meetingData := model.Meeting{}
 	if raw := req.FormValue("metadata"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &meetingData); err != nil {
-			http.Error(res, "invalid metadata JSON", http.StatusBadRequest)
+			logger.Error("invalid metadata JSON", "err", err)
+			res.WriteHeader(http.StatusBadRequest)
+			res.Write(models.NewErrorResponseBuffer("invalid metadata JSON"))
 			return
 		}
 	}
 
 	meeting, err := h.meetingsService.Load(req.Context(), &meetingData, file, header)
 	if err != nil {
-		var customErr *models.CustomErr
-		if errors.As(err, &customErr) {
-			models.WriteResponseError(customErr, res)
-			return
-		} else {
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
-			return
-		}
+		handleServiceError(err, res)
+		return
 	}
 
-	h.meetingProcessor.Meetins <- meeting
+	h.meetingProcessor.ProcessMeeting(meeting)
 
 	successMessage := "meeting file successfully uploaded"
 	logger.Info(successMessage, slog.String("id", meeting.ID))
-	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusAccepted)
 	res.Write(models.NewSuccessResponseBufferWithData(successMessage, meeting))
 }
 
-// HandleLoad processes meetings load request
+// HandleList processes meetings list request
 func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		res.WriteHeader(http.StatusMethodNotAllowed)
@@ -109,19 +116,14 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 	}
 	logger := logger.GetSlogLoggerFromContext(req.Context())
 
+	res.Header().Set("Content-Type", "application/json")
+
 	userID := req.URL.Query().Get("user_id")
 
 	meetings, err := h.meetingsService.GetAllByUserID(req.Context(), userID)
 	if err != nil {
-		var customErr *models.CustomErr
-		if errors.As(err, &customErr) {
-			models.WriteResponseError(customErr, res)
-			return
-		} else {
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
-			return
-		}
+		handleServiceError(err, res)
+		return
 	}
 
 	meetingsData := make([]models.MeetingResponseData, len(meetings))
@@ -129,15 +131,13 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 		meeting := meetings[i]
 		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
 		if err != nil {
-			logger.Error("error getting meeting status", "err", err)
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+			handleServiceError(err, res)
+			return
 		}
 		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
 		if err != nil {
-			logger.Error("error getting meeting summary", "err", err)
-			res.WriteHeader(http.StatusInternalServerError)
-			res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+			handleServiceError(err, res)
+			return
 		}
 		meetingsData[i] = models.MeetingResponseData{
 			ID:        meeting.ID,
@@ -153,10 +153,217 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 	if err := enc.Encode(meetingsData); err != nil {
 		logger.Error("error encoding response ", "err", err)
 		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
 		return
 	}
 
+	logger.Info("meetings list successfully obtained")
+	res.WriteHeader(http.StatusOK)
+	res.Write(buf.Bytes())
+}
+
+// HandleList processes meetings status request
+func (h *MeetingsHandler) HandleStatus(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
 	res.Header().Set("Content-Type", "application/json")
+
+	meetingID := req.URL.Query().Get("meeting_id")
+	meeting, err := h.meetingsService.GetByID(req.Context(), meetingID)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	userID := req.URL.Query().Get("user_id")
+	if meeting.UserID != userID {
+		res.WriteHeader(http.StatusForbidden)
+		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		return
+	}
+
+	task, err := h.tasksService.GetByMeetingID(req.Context(), meeting.ID)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+	meetingData := models.MeetingResponseData{
+		ID:                  meeting.ID,
+		Name:                meeting.Name,
+		CreatedAt:           meeting.CreatedAt,
+		Status:              string(task.Status),
+		UpdatedAt:           task.UpdatedAt,
+		ProcessErrorMessage: task.ErrorMessage,
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(meetingData); err != nil {
+		logger.Error("error encoding response ", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	logger.Info("meeting status successfully obtained")
+	res.WriteHeader(http.StatusOK)
+	res.Write(buf.Bytes())
+}
+
+// HandleTranscription processes get transcription text request
+func (h *MeetingsHandler) HandleTranscription(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	res.Header().Set("Content-Type", "application/json")
+
+	meetingID := req.URL.Query().Get("meeting_id")
+	meeting, err := h.meetingsService.GetByID(req.Context(), meetingID)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	userID := req.URL.Query().Get("user_id")
+	if meeting.UserID != userID {
+		res.WriteHeader(http.StatusForbidden)
+		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		return
+	}
+
+	transcription, err := h.transcriptionService.GetByMeetingID(req.Context(), meeting.ID)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+	meetingData := models.TranscriptionResponseData{
+		Text: transcription.Text,
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(meetingData); err != nil {
+		logger.Error("error encoding response ", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	logger.Info("transcription text successfully obtained")
+	res.WriteHeader(http.StatusOK)
+	res.Write(buf.Bytes())
+}
+
+// HandleFind processes meetings find request
+func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	res.Header().Set("Content-Type", "application/json")
+
+	bodyBuf, err := io.ReadAll(req.Body)
+	if err != nil {
+		logger.Error("cannot read request body", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	var request models.FindMeetingRequestData
+	if err := json.Unmarshal(bodyBuf, &request); err != nil {
+		logger.Error("cannot decode request json body", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	meetings, err := h.meetingsService.FindByNameContains(req.Context(), request.UserID, request.KeyWords)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	transcriptions, err := h.transcriptionService.FindByTextContains(req.Context(), request.UserID, request.KeyWords)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	for _, t := range transcriptions {
+		if slices.ContainsFunc(meetings, func(m *model.Meeting) bool { return m.ID == t.MeetingID }) {
+			continue
+		}
+		meeting, err := h.meetingsService.GetByID(req.Context(), t.MeetingID)
+		if err != nil {
+			handleServiceError(err, res)
+			return
+		}
+		meetings = append(meetings, meeting)
+	}
+
+	summaries, err := h.summaryService.FindByTextContains(req.Context(), request.UserID, request.KeyWords)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	for _, s := range summaries {
+		if slices.ContainsFunc(meetings, func(m *model.Meeting) bool { return m.ID == s.MeetingID }) {
+			continue
+		}
+		meeting, err := h.meetingsService.GetByID(req.Context(), s.MeetingID)
+		if err != nil {
+			handleServiceError(err, res)
+			return
+		}
+		meetings = append(meetings, meeting)
+	}
+
+	slices.SortFunc(meetings, func(a *model.Meeting, b *model.Meeting) int {
+		return cmp.Compare(a.CreatedAt.UnixMilli(), b.CreatedAt.UnixMilli())
+	})
+
+	meetingsData := make([]models.MeetingResponseData, len(meetings))
+	for i := 0; i < len(meetings); i++ {
+		meeting := meetings[i]
+		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
+		if err != nil {
+			handleServiceError(err, res)
+			return
+		}
+		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
+		if err != nil {
+			handleServiceError(err, res)
+			return
+		}
+		meetingsData[i] = models.MeetingResponseData{
+			ID:        meeting.ID,
+			Name:      meeting.Name,
+			CreatedAt: meeting.CreatedAt,
+			Status:    string(status),
+			Summary:   summary,
+		}
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(meetingsData); err != nil {
+		logger.Error("error encoding response ", "err", err)
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
 	logger.Info("meetings list successfully obtained")
 	res.WriteHeader(http.StatusOK)
 	res.Write(buf.Bytes())

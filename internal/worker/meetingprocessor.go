@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/scouser-122/meeting-analyzer/internal/app/service"
 	"github.com/scouser-122/meeting-analyzer/internal/client/processors"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
+	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
 type MeetingProcessor struct {
@@ -23,6 +23,7 @@ type MeetingProcessor struct {
 	summaryService       *service.SummaryService
 	audioProcessor       processors.AudioProcessor
 	summarizeProcessor   processors.SummarizeProcessor
+	processorLimit       int64
 	Meetins              chan *model.Meeting
 }
 
@@ -42,7 +43,8 @@ func NewMeetingProcessor(
 		summaryService:       summaryService,
 		audioProcessor:       audioProcessor,
 		summarizeProcessor:   summarizeProcessor,
-		Meetins:              make(chan *model.Meeting, *serverConfig.ProcessorLimit),
+		Meetins:              make(chan *model.Meeting, 10),
+		processorLimit:       *serverConfig.ProcessorLimit,
 	}
 }
 
@@ -58,12 +60,16 @@ func (m *MeetingProcessor) Run() {
 	}()
 }
 
-const maxInFlight = 3
+func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) {
+	go func() {
+		m.Meetins <- meeting
+	}()
+}
 
 func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	semMaxLimit := make(chan struct{}, maxInFlight)
+	semMaxLimit := make(chan struct{}, m.processorLimit)
 	for {
 		stopProcessing := false
 		select {
@@ -111,6 +117,7 @@ func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
 	err = m.transcriptionService.AddNewTranscription(ctx, &model.Transcription{
 		ID:        uuid.New().String(),
 		MeetingID: meeting.ID,
+		UserID:    meeting.UserID,
 		Text:      transcriptionText,
 		CreatedAt: time.Now(),
 	})
@@ -134,6 +141,7 @@ func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
 	err = m.summaryService.AddNewSummary(ctx, &model.Summary{
 		ID:        uuid.New().String(),
 		MeetingID: meeting.ID,
+		UserID:    meeting.UserID,
 		Text:      summary,
 		CreatedAt: time.Now(),
 	})

@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // UsersService service to work with users

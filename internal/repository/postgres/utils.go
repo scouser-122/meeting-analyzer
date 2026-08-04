@@ -3,8 +3,8 @@ package postgres
 import (
 	"context"
 
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // PostgresRepositoryUtils implements RepositoryUtils interface to work with Postgres DB

@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/scouser-122/meeting-analyzer/internal/app/models"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // RequestLogger is a middleware which logs incoming requests
