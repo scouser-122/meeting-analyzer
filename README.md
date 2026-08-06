@@ -61,3 +61,9 @@ meeting-analyzer/
 - **Слой работы с БД** (`internal/repository/postgres/`) — изолирован за интерфейсами из `domain/repository/`
 - **Клиенты внешних API** (`internal/client/`) — каждый клиент имеет интерфейс, что позволяет подменить реальную реализацию тестовой заглушкой
 - **Фоновая обработка** (`internal/worker/`) — асинхронная обработка задач, отделена от синхронных запросов
+
+## DB migrations down
+
+```bash
+migrate -database "postgres://postgres:123@localhost:5432/meeting_analyzer?sslmode=disable" -path ./migrations down
+```

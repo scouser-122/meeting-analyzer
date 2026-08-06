@@ -90,7 +90,7 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
 
 	audioProcessor := salutespeech.NewSaluteSpeechClient(serverConfig)
-	summaryProcessor := gigachat.NewGigaChatClient(serverConfig)
+	llmClient := gigachat.NewGigaChatClient(serverConfig)
 
 	meetingProcessor := worker.NewMeetingProcessor(
 		meetingsService,
@@ -98,7 +98,7 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 		transcriptionsService,
 		summaryService,
 		audioProcessor,
-		summaryProcessor,
+		llmClient,
 		serverConfig,
 	)
 	meetingProcessor.Run()
@@ -111,5 +111,6 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 		transcriptionsService,
 		summaryService,
 		meetingProcessor,
+		llmClient,
 	)
 }

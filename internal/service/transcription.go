@@ -39,3 +39,7 @@ func (t *TranscriptionService) GetByMeetingID(ctx context.Context, meetingID str
 func (t *TranscriptionService) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
 	return t.transcriptionsRepo.FindByTextContains(ctx, userID, textPart)
 }
+
+func (t *TranscriptionService) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
+	return t.transcriptionsRepo.FindByKeyWords(ctx, userID, keywords, topic)
+}

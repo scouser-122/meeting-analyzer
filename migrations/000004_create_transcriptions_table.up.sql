@@ -7,3 +7,8 @@ CREATE TABLE transcriptions (
     PRIMARY KEY(id),
     FOREIGN KEY (meeting_id) REFERENCES meetings (id)
 );
+
+ALTER TABLE transcriptions ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (to_tsvector('russian', coalesce(text, ''))) STORED;
+
+CREATE INDEX idx_transcriptions_search ON transcriptions USING GIN (search_vector);

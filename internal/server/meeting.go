@@ -141,7 +141,7 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 		}
 		meetingsData[i] = models.MeetingResponseData{
 			ID:        meeting.ID,
-			Name:      meeting.Name,
+			Name:      meeting.MeetingName,
 			CreatedAt: meeting.CreatedAt,
 			Status:    string(status),
 			Summary:   summary,
@@ -193,7 +193,7 @@ func (h *MeetingsHandler) HandleStatus(res http.ResponseWriter, req *http.Reques
 	}
 	meetingData := models.MeetingResponseData{
 		ID:                  meeting.ID,
-		Name:                meeting.Name,
+		Name:                meeting.MeetingName,
 		CreatedAt:           meeting.CreatedAt,
 		Status:              string(task.Status),
 		UpdatedAt:           task.UpdatedAt,
@@ -279,7 +279,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	var request models.FindMeetingRequestData
+	var request models.FindMeetingRequest
 	if err := json.Unmarshal(bodyBuf, &request); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
@@ -341,6 +341,9 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 			handleServiceError(err, res)
 			return
 		}
+		if status != model.TaskStatusCompleted {
+			continue
+		}
 		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
 		if err != nil {
 			handleServiceError(err, res)
@@ -348,7 +351,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		}
 		meetingsData[i] = models.MeetingResponseData{
 			ID:        meeting.ID,
-			Name:      meeting.Name,
+			Name:      meeting.MeetingName,
 			CreatedAt: meeting.CreatedAt,
 			Status:    string(status),
 			Summary:   summary,

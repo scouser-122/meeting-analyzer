@@ -26,7 +26,7 @@ func NewPostgresMeetingRepository(db *PostgresDatabase) *PostgresMeetingReposito
 		err := row.Scan(
 			&meeting.ID,
 			&meeting.UserID,
-			&meeting.Name,
+			&meeting.MeetingName,
 			&meeting.FilePath,
 			&meeting.OriginalFilename,
 			&meeting.CreatedAt,
@@ -81,8 +81,8 @@ func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.M
 	}
 	_, err := repo.Update(
 		ctx,
-		"UPDATE meetings SET name = $1, file_path = $2, original_file_name = $3, updated_at = $4 WHERE id = $5",
-		meeting.Name,
+		"UPDATE meetings SET meeting_name = $1, file_path = $2, original_file_name = $3, updated_at = $4 WHERE id = $5",
+		meeting.MeetingName,
 		meeting.FilePath,
 		meeting.OriginalFilename,
 		time.Now(),
@@ -100,7 +100,7 @@ const meetingsPageSize = 10
 func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Meeting{}
-	for orders, err := range r.repo.GetAllConditional(
+	for meetings, err := range r.repo.GetAllConditional(
 		ctx,
 		"WHERE user_id = $1",
 		[]any{userID},
@@ -111,7 +111,7 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 			logger.Error(err.Error())
 			return []*model.Meeting{}, err
 		}
-		result = append(result, orders...)
+		result = append(result, meetings...)
 	}
 	return result, nil
 }
@@ -119,9 +119,9 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Meeting{}
-	for orders, err := range r.repo.GetAllConditional(
+	for meetings, err := range r.repo.GetAllConditional(
 		ctx,
-		"WHERE user_id = $1 AND name LIKE '%$2%'",
+		"WHERE user_id = $1 AND meeting_name LIKE '%' || $2::text || '%'",
 		[]any{userID, namePart},
 		"created_at DESC",
 		meetingsPageSize,
@@ -130,7 +130,7 @@ func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, user
 			logger.Error(err.Error())
 			return []*model.Meeting{}, err
 		}
-		result = append(result, orders...)
+		result = append(result, meetings...)
 	}
 	return result, nil
 }

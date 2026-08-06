@@ -80,9 +80,9 @@ func (s *MeetingsService) Load(
 		return nil, err
 	}
 
-	if meeting.Name != nil {
-		newMeeting.Name = new(string)
-		*newMeeting.Name = *meeting.Name
+	if meeting.MeetingName != nil {
+		newMeeting.MeetingName = new(string)
+		*newMeeting.MeetingName = *meeting.MeetingName
 	}
 
 	err = s.saveMeetingFileToFS(ctx, newMeeting, file, header)

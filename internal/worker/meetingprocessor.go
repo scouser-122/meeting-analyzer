@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/scouser-122/meeting-analyzer/internal/client/processors"
+	"github.com/scouser-122/meeting-analyzer/internal/client"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
@@ -21,8 +21,8 @@ type MeetingProcessor struct {
 	tasksService         *service.TasksService
 	transcriptionService *service.TranscriptionService
 	summaryService       *service.SummaryService
-	audioProcessor       processors.AudioProcessor
-	summarizeProcessor   processors.SummarizeProcessor
+	audioProcessor       client.AudioProcessor
+	summarizeProcessor   client.LLMClient
 	processorLimit       int64
 	Meetins              chan *model.Meeting
 }
@@ -32,8 +32,8 @@ func NewMeetingProcessor(
 	tasksService *service.TasksService,
 	transcriptionService *service.TranscriptionService,
 	summaryService *service.SummaryService,
-	audioProcessor processors.AudioProcessor,
-	summarizeProcessor processors.SummarizeProcessor,
+	audioProcessor client.AudioProcessor,
+	summarizeProcessor client.LLMClient,
 	serverConfig *config.ServerConfig,
 ) *MeetingProcessor {
 	return &MeetingProcessor{
@@ -94,7 +94,7 @@ func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
 }
 
 func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
-	slog.Info("start process meeting", "name", *meeting.Name, "meetingID", meeting.ID)
+	slog.Info("start process meeting", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 
 	ctx := context.Background()
 
@@ -154,5 +154,5 @@ func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
 
 	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusCompleted, nil)
 
-	slog.Info("meeting successfully processed", "name", *meeting.Name, "meetingID", meeting.ID)
+	slog.Info("meeting successfully processed", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 }

@@ -28,6 +28,7 @@ func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryReposito
 			&summary.UserID,
 			&summary.Text,
 			&summary.CreatedAt,
+			&summary.SearchV,
 		)
 		if err != nil {
 			return nil, err
@@ -75,18 +76,40 @@ func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingI
 func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Summary{}
-	for summaries, err := range r.repo.GetAllConditional(
+	const sql = `
+		SELECT id, meeting_id, user_id, text, created_at,
+		       ts_rank(search_vector, websearch_to_tsquery('russian', $2)) AS rank
+		FROM summary
+		WHERE user_id = $1
+		  AND search_vector @@ websearch_to_tsquery('russian', $2)
+		ORDER BY rank DESC
+		LIMIT 5
+	`
+	r.repo.CustomQuery(
 		ctx,
-		"WHERE user_id = $1 AND text LIKE '%$2%'",
-		[]any{userID, textPart},
-		"created_at DESC",
-		meetingsPageSize,
-	) {
-		if err != nil {
-			logger.Error(err.Error())
-			return []*model.Summary{}, err
-		}
-		result = append(result, summaries...)
-	}
+		func(rows pgx.Rows) error {
+			for rows.Next() {
+				var summary model.Summary
+				var rank float64
+				err := rows.Scan(
+					&summary.ID,
+					&summary.MeetingID,
+					&summary.UserID,
+					&summary.Text,
+					&summary.CreatedAt,
+					&rank,
+				)
+				if err != nil {
+					logger.Error("find by text contains - parse summary error", "err", err)
+					return err
+				}
+				result = append(result, &summary)
+			}
+			return nil
+		},
+		sql,
+		userID,
+		textPart,
+	)
 	return result, nil
 }

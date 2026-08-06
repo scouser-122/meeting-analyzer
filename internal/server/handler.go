@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/scouser-122/meeting-analyzer/internal/client"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
@@ -26,6 +27,7 @@ func InitializeHandlers(
 	transcriptionService *service.TranscriptionService,
 	summaryService *service.SummaryService,
 	meetingProcessor *worker.MeetingProcessor,
+	llmClient client.LLMClient,
 ) []Handler {
 	handlers := []Handler{}
 
@@ -44,6 +46,16 @@ func InitializeHandlers(
 	handlers = append(handlers, Handler{"/api/meetings/list", meetingsHandler.HandleList})
 	handlers = append(handlers, Handler{"/api/meetings/status", meetingsHandler.HandleStatus})
 	handlers = append(handlers, Handler{"/api/meetings/transcription", meetingsHandler.HandleTranscription})
+	handlers = append(handlers, Handler{"/api/meetings/find", meetingsHandler.HandleFind})
+
+	chatHandler := NewChatHandler(
+		llmClient,
+		meetingsService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+	)
+	handlers = append(handlers, Handler{"/api/chat", chatHandler.HandleChat})
 
 	return handlers
 }

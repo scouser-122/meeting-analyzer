@@ -77,7 +77,6 @@ type TranscriptionResponseData struct {
 	Text string `json:"text"`
 }
 
-type FindMeetingRequestData struct {
-	UserID   string `json:"user_id"`
-	KeyWords string `json:"key_words"`
+type ChatResponse struct {
+	Answer string `json:"answer"`
 }

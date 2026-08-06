@@ -7,3 +7,8 @@ CREATE TABLE summary (
     PRIMARY KEY(id),
     FOREIGN KEY (meeting_id) REFERENCES meetings (id)
 );
+
+ALTER TABLE summary ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (to_tsvector('russian', coalesce(text, ''))) STORED;
+
+CREATE INDEX idx_summary_search ON summary USING GIN (search_vector);

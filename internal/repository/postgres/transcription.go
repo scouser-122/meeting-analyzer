@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,7 @@ func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscrip
 			&transcription.UserID,
 			&transcription.Text,
 			&transcription.CreatedAt,
+			&transcription.SearchV,
 		)
 		if err != nil {
 			return nil, err
@@ -75,18 +77,98 @@ func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, me
 func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Transcription{}
-	for transcriptions, err := range r.repo.GetAllConditional(
+	const sql = `
+		SELECT id, meeting_id, user_id, text, created_at,
+		       ts_rank(search_vector, websearch_to_tsquery('russian', $2)) AS rank
+		FROM transcriptions
+		WHERE user_id = $1
+		  AND search_vector @@ websearch_to_tsquery('russian', $2)
+		ORDER BY rank DESC
+		LIMIT 5
+	`
+	r.repo.CustomQuery(
 		ctx,
-		"WHERE user_id = $1 AND text LIKE '%$2%'",
-		[]any{userID, textPart},
-		"created_at DESC",
-		meetingsPageSize,
-	) {
-		if err != nil {
-			logger.Error(err.Error())
-			return []*model.Transcription{}, err
-		}
-		result = append(result, transcriptions...)
-	}
+		func(rows pgx.Rows) error {
+			for rows.Next() {
+				var transcription model.Transcription
+				var rank float64
+				err := rows.Scan(
+					&transcription.ID,
+					&transcription.MeetingID,
+					&transcription.UserID,
+					&transcription.Text,
+					&transcription.CreatedAt,
+					&rank,
+				)
+				if err != nil {
+					logger.Error("find by text contains - parse transcription error", "err", err)
+					return err
+				}
+				result = append(result, &transcription)
+			}
+			return nil
+		},
+		sql,
+		userID,
+		textPart,
+	)
 	return result, nil
+}
+
+func (r *PostgresTranscriptionRepository) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	result := []*model.Transcription{}
+	terms := append(append([]string{}, keywords...), topic)
+	tsQuery := strings.Join(terms, " | ")
+	safeQuery := buildTsQuery(terms)
+	const sql = `
+		SELECT id, meeting_id, user_id, text, created_at,
+		       ts_rank(search_vector, plainto_tsquery('russian', $2)) AS rank
+		FROM transcriptions
+		WHERE user_id = $1
+		  AND search_vector @@ to_tsquery('russian', $3)
+		ORDER BY rank DESC
+		LIMIT 5
+	`
+	r.repo.CustomQuery(
+		ctx,
+		func(rows pgx.Rows) error {
+			for rows.Next() {
+				var transcription model.Transcription
+				var rank float64
+				err := rows.Scan(
+					&transcription.ID,
+					&transcription.MeetingID,
+					&transcription.UserID,
+					&transcription.Text,
+					&transcription.CreatedAt,
+					&rank,
+				)
+				if err != nil {
+					logger.Error("find by key words - parse transcription error", "err", err)
+					return err
+				}
+				result = append(result, &transcription)
+			}
+			return nil
+		},
+		sql,
+		userID,
+		tsQuery,
+		safeQuery,
+	)
+	return result, nil
+
+}
+
+func buildTsQuery(terms []string) string {
+	quoted := make([]string, 0, len(terms))
+	for _, t := range terms {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		quoted = append(quoted, "'"+strings.ReplaceAll(t, "'", "''")+"'")
+	}
+	return strings.Join(quoted, " | ")
 }

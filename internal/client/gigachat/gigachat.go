@@ -1,6 +1,7 @@
 package gigachat
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 type GigaChatClient struct {
@@ -35,6 +37,10 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 	request := GigaChatCompletionsRequest{
 		Model: "GigaChat",
 		Messages: []GigaChatCompletionsMessage{
+			{
+				Role:    "system",
+				Content: "Ты - помощник по обработке данных",
+			},
 			{
 				Role:    "user",
 				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи:\n%s", text),
@@ -70,6 +76,73 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 	}
 
 	return answer, nil
+}
+
+func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error) {
+	client := resty.New()
+
+	token, err := c.getToken()
+	if err != nil {
+		return nil, err
+	}
+
+	const extractPrompt = `Определи, спрашивает ли пользователь про какую-то встречу/созвон (найти запись, выжимку, что обсуждали и т.п.).
+
+Если НЕТ — верни {"is_meeting_query": false, "keywords": [], "topic": ""}.
+
+Если ДА — извлеки ключевые слова и тему встречи.
+
+Ответь ТОЛЬКО валидным JSON без пояснений и markdown, в формате:
+{"is_meeting_query": true|false, "keywords": ["слово1", "слово2"], "topic": "краткая тема"}
+
+Вопрос: %s`
+
+	request := GigaChatCompletionsRequest{
+		Model: "GigaChat",
+		Messages: []GigaChatCompletionsMessage{
+			{
+				Role:    "system",
+				Content: "Ты - помощник по обработке данных",
+			},
+			{
+				Role:    "user",
+				Content: fmt.Sprintf(extractPrompt, text),
+			},
+		},
+	}
+
+	var response GigaChatCompletionsResponse
+	requestID := uuid.New().String()
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("X-Request-ID", requestID).
+		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
+		SetBody(request).
+		SetResult(&response).
+		Post(fmt.Sprintf("%s/v1/chat/completions", c.config.ServerAddress))
+
+	if err != nil {
+		return nil, fmt.Errorf("gigachat client extract intent request failed, err: %s", err)
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("gigachat client extract intent request failed, http status: %s", resp.StatusCode())
+	}
+
+	var answer string
+	for _, c := range response.Choises {
+		if c.Message.Role == "assistant" {
+			answer = c.Message.Content
+		}
+	}
+	if answer == "" {
+		return nil, fmt.Errorf("gigachat client extract intent response doesn't contain answer")
+	}
+
+	var intent models.QueryIntent
+	if err := json.Unmarshal([]byte(answer), &intent); err != nil {
+		return nil, fmt.Errorf("parse intent json: %w", err)
+	}
+	return &intent, nil
 }
 
 func (c *GigaChatClient) getToken() (string, error) {

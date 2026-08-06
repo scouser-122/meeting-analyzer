@@ -1,4 +1,4 @@
-package processors
+package client
 
 import "github.com/scouser-122/meeting-analyzer/internal/domain/model"
 

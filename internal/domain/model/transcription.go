@@ -9,4 +9,5 @@ type Transcription struct {
 	UserID    string
 	Text      string
 	CreatedAt time.Time
+	SearchV   TSVector
 }

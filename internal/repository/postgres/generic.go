@@ -170,6 +170,32 @@ func (r *GenericRepository[T]) GetAllConditional(
 // CustomQuery makes custom query request and returns result
 func (r *GenericRepository[T]) CustomQuery(
 	ctx context.Context,
+	scanner func(rows pgx.Rows) error,
+	query string,
+	args ...any,
+) error {
+	return DataBaseRequestRetry(
+		ctx,
+		r.retryConfig,
+		func() error {
+			rows, err := r.db.Query(ctx, query, args...)
+			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				err = scanner(rows)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	)
+}
+
+// CustomQueryRow makes custom query request and returns result
+func (r *GenericRepository[T]) CustomQueryRow(
+	ctx context.Context,
 	mapper func(row pgx.Row) error,
 	query string,
 	args ...any,

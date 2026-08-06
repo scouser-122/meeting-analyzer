@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/scouser-122/meeting-analyzer/internal/client/gigachat"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
@@ -44,31 +47,74 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBuf, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("cannot read request body", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	var request gigachat.GigaChatCompletionsRequest
+	if err := json.Unmarshal(bodyBuf, &request); err != nil {
+		log.Println("cannot decode request json body", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
 	log.Println("received request via /v1/chat/completions")
+
+	var question string
+	var choises []gigachat.GigaChatCompletionsResponseChoise
+	for _, m := range request.Messages {
+		if m.Role == "user" {
+			if strings.Index(m.Content, "Напиши краткую выжимку") == 0 {
+				question = "summary"
+			} else if strings.Index(m.Content, "Определи, спрашивает ли пользователь про какую-то встречу") == 0 {
+				question = "intent_extract"
+			}
+		}
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+			Message: gigachat.GigaChatCompletionsMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			},
+		})
+	}
+
+	if question == "summary" {
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+			Message: gigachat.GigaChatCompletionsMessage{
+				Role:    "assistant",
+				Content: "На встрече обсуждали добавление нового параметра priority в метод создания заказа. Договорились реализовать и протестировать функционал в этот же день.",
+			},
+		})
+	} else if question == "intent_extract" {
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+			Message: gigachat.GigaChatCompletionsMessage{
+				Role:    "assistant",
+				Content: `{"is_meeting_query": true, "keywords": ["добавить", "новый", "параметр", "API", "срочно"], "topic": "Добавление нового параметра в API"}`,
+			},
+		})
+	}
+
+	log.Println("choises len: ", len(choises))
+
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	if err := enc.Encode(gigachat.GigaChatCompletionsResponse{
-		Model: "GigaChat",
-		Choises: []gigachat.GigaChatCompletionsResponseChoise{
-			{
-				Message: gigachat.GigaChatCompletionsMessage{
-					Role:    "user",
-					Content: "User request",
-				},
-			},
-			{
-				Message: gigachat.GigaChatCompletionsMessage{
-					Role:    "assistant",
-					Content: "На встрече обсуждали добавление нового параметра priority в метод создания заказа. Договорились реализовать и протестировать в этот же день.",
-				},
-			},
-		},
+		Model:   "GigaChat",
+		Choises: choises,
 	}); err != nil {
+		log.Println("error process request /v1/chat/completions: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(buf.Bytes())
+
+	log.Println("success process request /v1/chat/completions")
 }
 
 func main() {
