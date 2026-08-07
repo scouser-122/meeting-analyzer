@@ -23,7 +23,7 @@ type MeetingProcessor struct {
 	processorLimit       int64
 	Meetins              chan *model.Meeting
 	stopChan             chan struct{}
-	waitGroup            sync.WaitGroup
+	shutdownWaitGroup    sync.WaitGroup
 }
 
 func NewMeetingProcessor(
@@ -49,14 +49,14 @@ func NewMeetingProcessor(
 
 func (m *MeetingProcessor) Run() {
 	m.stopChan = make(chan struct{})
-	m.waitGroup.Add(1)
+	m.shutdownWaitGroup.Add(1)
 	go m.ProccessorContinousWorker()
 }
 
 func (m *MeetingProcessor) Shutdown() {
 	slog.Info("meeting processor shutdown signal received. stopping worker...")
 	close(m.stopChan)
-	m.waitGroup.Wait()
+	m.shutdownWaitGroup.Wait()
 }
 
 func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) {
@@ -90,7 +90,7 @@ func (m *MeetingProcessor) ProccessorContinousWorker() {
 				}
 				stopWaitGroup.Wait()
 			}
-			m.waitGroup.Done()
+			m.shutdownWaitGroup.Done()
 			stopProcessing = true
 		default:
 			if len(m.Meetins) > 0 {
