@@ -72,31 +72,37 @@ func (m *MeetingProcessor) ProccessorContinousWorker() {
 		select {
 		case <-m.stopChan:
 			slog.Info("stop processing meetings")
-			var stopWaitGroup sync.WaitGroup
-			for meeting := range m.Meetins {
-				slog.Info("meetings channel len: ", "len", len(m.Meetins))
-				stopWaitGroup.Add(1)
+			if len(m.Meetins) > 0 {
+				var stopWaitGroup sync.WaitGroup
+				for meeting := range m.Meetins {
+					slog.Info("meetings channel len: ", "len", len(m.Meetins))
+					stopWaitGroup.Add(1)
+					semMaxLimit <- struct{}{}
+					go func(meeting *model.Meeting) {
+						defer func() { <-semMaxLimit }()
+						m.processMeetingInWorker(meeting)
+						stopWaitGroup.Done()
+					}(meeting)
+					if len(m.Meetins) == 0 {
+						slog.Info("stop read meetings channel")
+						break
+					}
+				}
+				stopWaitGroup.Wait()
+			}
+			m.waitGroup.Done()
+			stopProcessing = true
+		default:
+			if len(m.Meetins) > 0 {
+				meeting := <-m.Meetins
 				semMaxLimit <- struct{}{}
 				go func(meeting *model.Meeting) {
 					defer func() { <-semMaxLimit }()
 					m.processMeetingInWorker(meeting)
-					stopWaitGroup.Done()
 				}(meeting)
-				if len(m.Meetins) == 0 {
-					slog.Info("stop read meetings channel")
-					break
-				}
+			} else {
+				time.Sleep(100 * time.Millisecond)
 			}
-			stopWaitGroup.Wait()
-			m.waitGroup.Done()
-			stopProcessing = true
-		default:
-			meeting := <-m.Meetins
-			semMaxLimit <- struct{}{}
-			go func(meeting *model.Meeting) {
-				defer func() { <-semMaxLimit }()
-				m.processMeetingInWorker(meeting)
-			}(meeting)
 		}
 		if stopProcessing {
 			break

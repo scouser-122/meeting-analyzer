@@ -177,11 +177,12 @@ func (s *SaluteSpeechClient) createRecognizeTask(fileID string) (string, error) 
 		return "", fmt.Errorf("salute speech client failed to start recognize, status: %s, fileID: %s", response.Result.Status, fileID)
 	}
 
-	slog.Info("salute speech client successfully create recognize task", "fileID", fileID)
+	slog.Info("salute speech client successfully create recognize task", "fileID", fileID, "taskID", response.Result.ID, "status", response.Result.Status)
 	return response.Result.ID, nil
 }
 
 func (s *SaluteSpeechClient) getRecognizeStatus(taskID string) (model.TaskStatus, error) {
+	slog.Info("salute speech client successfully get recognize status", "taskID", taskID)
 	client := s.createRestyClient()
 
 	token, err := s.getToken()
@@ -203,6 +204,8 @@ func (s *SaluteSpeechClient) getRecognizeStatus(taskID string) (model.TaskStatus
 	}
 	var status model.TaskStatus
 	status = model.TaskStatus(resp.Body())
+
+	slog.Info("salute speech client recognize status", "taskID", taskID, "status", status)
 	return status, nil
 }
 
