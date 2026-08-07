@@ -3,7 +3,7 @@
 ```
 meeting-analyzer/
 ├── cmd/                          # Точки входа (main.go для каждого интерфейса)
-│   ├── server/                   # Основной backend-сервер (HTTP/gRPC API)
+│   ├── server/                   # Основной backend-сервер (HTTP API)
 │   ├── tui/                      # TUI-утилита (CLI-интерфейс)
 │   ├── mocks/                    # Заглушки для интеграций с обработчиком аудио и LLM
 │   └── telegram-bot/             # Telegram-бот
