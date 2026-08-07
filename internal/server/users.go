@@ -54,16 +54,6 @@ func (h *UsersHandler) HandleStart(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// authToken, err := h.jwtService.GenerateJWT(registeredUser.Login)
-	// if err != nil {
-	// 	logger.Error("error generating JWT token", "err", err)
-	// 	res.WriteHeader(http.StatusInternalServerError)
-	// 	res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
-	// 	return
-	// }
-
-	// res.Header().Add("Authorization", fmt.Sprintf("Bearer %s", authToken))
-
 	successMessage := "user successfully registered"
 	logger.Info(successMessage, slog.String("id", user.ID))
 	res.WriteHeader(http.StatusOK)

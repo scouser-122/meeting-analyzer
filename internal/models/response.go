@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 )
 
 // CommonResponse defines common response structure with status and message
@@ -71,6 +73,12 @@ type MeetingResponseData struct {
 	Status              string    `json:"status"`
 	Summary             *string   `json:"summary,omitempty"`
 	ProcessErrorMessage *string   `json:"process_error_message,omitempty"`
+}
+
+type LoadResponse struct {
+	Status  string        `json:"status"`
+	Message string        `json:"message"`
+	Data    model.Meeting `json:"data"`
 }
 
 type TranscriptionResponseData struct {

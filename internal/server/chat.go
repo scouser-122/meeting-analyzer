@@ -95,7 +95,7 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 					handleServiceError(err, res)
 					return
 				}
-				chatResponse.Answer = fmt.Sprintf("Название встречи: «%s». Дата создания: %s. Краткая выжимка: %s", *meeting.MeetingName, meeting.UpdatedAt, *summary)
+				chatResponse.Answer = fmt.Sprintf("Название встречи:\n%s\n\nДата создания:\n%s\n\nКраткая выжимка:\n%s", *meeting.MeetingName, meeting.UpdatedAt, *summary)
 			}
 		} else {
 			chatResponse.Answer = "Не удалось найти встречу по указанной теме"

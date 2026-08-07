@@ -1,7 +1,7 @@
-# cmd/server
+# cmd/tui
 
 Пример сборки и запуска из командной строки:
 
 ```bash
-go build -o server && ./server -config="./config.yaml"
+go build -o tui_client && ./tui_client -c="./config.yaml"
 ```
