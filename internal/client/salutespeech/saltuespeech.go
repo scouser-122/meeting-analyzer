@@ -29,6 +29,8 @@ func NewSaluteSpeechClient(
 }
 
 func (s *SaluteSpeechClient) TranscribeAudio(meeting *model.Meeting) (string, error) {
+	slog.Info("salute speech client: start transribing audio", "name", *meeting.MeetingName, "meetingID", meeting.ID)
+
 	fileID, err := s.sendFile(*meeting.FilePath)
 	if err != nil {
 		return "", err
@@ -46,10 +48,10 @@ func (s *SaluteSpeechClient) TranscribeAudio(meeting *model.Meeting) (string, er
 			return "", err
 		}
 		if status == "ERROR" {
-			return "", fmt.Errorf("salute speech client recognize status error. taskID: %s", taskID)
+			return "", fmt.Errorf("salute speech client: recognize status error. taskID: %s", taskID)
 		}
 		if status == "CANCELED" {
-			return "", fmt.Errorf("salute speech client recognize status cancelled. taskID: %s", taskID)
+			return "", fmt.Errorf("salute speech client: recognize status cancelled. taskID: %s", taskID)
 		}
 		if status == "DONE" {
 			break
@@ -65,6 +67,8 @@ func (s *SaluteSpeechClient) TranscribeAudio(meeting *model.Meeting) (string, er
 	if err != nil {
 		return "", err
 	}
+
+	slog.Info("salute speech client: transribing audio finished succesfully", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 
 	return transcription, nil
 }

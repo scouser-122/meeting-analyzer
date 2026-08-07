@@ -22,7 +22,7 @@ type MeetingProcessor struct {
 	transcriptionService *service.TranscriptionService
 	summaryService       *service.SummaryService
 	audioProcessor       client.AudioProcessor
-	summarizeProcessor   client.LLMClient
+	llmClient            client.LLMClient
 	processorLimit       int64
 	Meetins              chan *model.Meeting
 }
@@ -42,7 +42,7 @@ func NewMeetingProcessor(
 		transcriptionService: transcriptionService,
 		summaryService:       summaryService,
 		audioProcessor:       audioProcessor,
-		summarizeProcessor:   summarizeProcessor,
+		llmClient:            summarizeProcessor,
 		Meetins:              make(chan *model.Meeting, 10),
 		processorLimit:       *serverConfig.ProcessorLimit,
 	}
@@ -129,9 +129,9 @@ func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
 	}
 	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusTranscribed, nil)
 
-	summary, err := m.summarizeProcessor.SummarizeTranscription(meeting, transcriptionText)
+	summary, err := m.llmClient.SummarizeTranscription(meeting, transcriptionText)
 	if err != nil {
-		slog.Error("processor can't summarize transcription", "err", err, "meetingID", meeting.ID)
+		slog.Error("LLM client can't summarize transcription", "err", err, "meetingID", meeting.ID)
 		errMessage := err.Error()
 		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
 		return

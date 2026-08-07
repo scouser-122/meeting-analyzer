@@ -102,10 +102,9 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 
 	h.meetingProcessor.ProcessMeeting(meeting)
 
-	successMessage := "Файл с записью встречи успешно загружен и запущена его обработка"
-	logger.Info(successMessage, slog.String("id", meeting.ID))
+	logger.Info("meeting file upload succesfully, and sent to processing queue", slog.String("id", meeting.ID))
 	res.WriteHeader(http.StatusAccepted)
-	res.Write(models.NewSuccessResponseBufferWithData(successMessage, meeting))
+	res.Write(models.NewSuccessResponseBufferWithData("Файл с записью встречи успешно загружен и запущена его обработка", meeting))
 }
 
 // HandleList processes meetings list request

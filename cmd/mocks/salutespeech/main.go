@@ -62,6 +62,8 @@ func handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
+var recognizeTasks map[string]int
+
 func handleCreateRecognizeTask(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -71,21 +73,21 @@ func handleCreateRecognizeTask(w http.ResponseWriter, r *http.Request) {
 	log.Println("received request via /rest/v1/speech:async_recognize")
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
+	taskID := uuid.New().String()
 	if err := enc.Encode(salutespeech.SaluteSpeechRecognizeResponse{
 		Status: 200,
 		Result: salutespeech.SaluteSpeechRecognizeResult{
-			ID:     uuid.New().String(),
+			ID:     taskID,
 			Status: "NEW",
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+	recognizeTasks[taskID] = 0
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(buf.Bytes())
 }
-
-var statusRandCounter int
 
 func handleGetRecognizeStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -95,14 +97,16 @@ func handleGetRecognizeStatus(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("received request via /rest/v1/task:get")
 
+	taskID := r.URL.Query().Get("id")
+
 	var status string
-	statusRandCounter++
-	if statusRandCounter == 1 {
-		status = "PROCESSING"
-	} else {
+	if recognizeTasks[taskID] == 2 {
 		status = "DONE"
-		statusRandCounter = 0
+	} else {
+		recognizeTasks[taskID] = recognizeTasks[taskID] + 1
+		status = "PROCESSING"
 	}
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	log.Println("status %", status)
@@ -115,7 +119,7 @@ func handleGetFileWithResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("received request via /rest/v1/task:get")
+	log.Println("received request via /rest/v1/data:download")
 
 	content, err := os.ReadFile("./transcription.txt")
 	if err != nil {
@@ -136,7 +140,7 @@ func handleGetFileWithResult(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	jwtService = service.NewJwtService(3, "defaultSecretKey")
-	statusRandCounter = 0
+	recognizeTasks = make(map[string]int)
 
 	http.HandleFunc("/api/v2/oauth", handleGetToken)
 	http.HandleFunc("/rest/v1/data:upload", handleUploadFile)

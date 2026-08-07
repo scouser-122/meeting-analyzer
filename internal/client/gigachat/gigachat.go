@@ -3,6 +3,7 @@ package gigachat
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -27,6 +28,7 @@ func NewGigaChatClient(
 }
 
 func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text string) (string, error) {
+	slog.Info("GigaChat client: start summarizing transcription", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 	client := resty.New()
 
 	token, err := c.getToken()
@@ -59,10 +61,10 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 		Post(fmt.Sprintf("%s/v1/chat/completions", c.config.ServerAddress))
 
 	if err != nil {
-		return "", fmt.Errorf("gigachat client request failed, err: %s, meetingID: %s", err, meeting.ID)
+		return "", fmt.Errorf("GigaChat client: request failed, err: %s, meetingID: %s", err, meeting.ID)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("gigachat client request failed, http status: %s, meetingID: %s", resp.StatusCode(), meeting.ID)
+		return "", fmt.Errorf("GigaChat client: request failed, http status: %s, meetingID: %s", resp.StatusCode(), meeting.ID)
 	}
 
 	var answer string
@@ -72,8 +74,9 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 		}
 	}
 	if answer == "" {
-		return "", fmt.Errorf("gigachat client response doesn't contain answer, meetingID: %s", meeting.ID)
+		return "", fmt.Errorf("GigaChat client: response doesn't contain answer, meetingID: %s", meeting.ID)
 	}
+	slog.Info("GigaChat client: transcription summarization finished successfully", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 
 	return answer, nil
 }
