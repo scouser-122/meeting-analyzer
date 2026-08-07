@@ -5,3 +5,4 @@ cmd/server/data/
 .vscode/launch.json
 cmd/tui/config.yaml
 cmd/tui/data/sample-0.mp3
+cmd/tui/tui_client
