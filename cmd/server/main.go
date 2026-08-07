@@ -19,6 +19,8 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
+var meetingProcessor *worker.MeetingProcessor
+
 func main() {
 	serverConfig := config.DefaultServerConfig()
 	serverConfig.Parse()
@@ -68,7 +70,7 @@ func main() {
 	<-quit
 
 	server.Shutdown()
-	slog.Info("server gracefully stopped")
+	meetingProcessor.Shutdown()
 }
 
 func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig *config.ServerConfig) []server.Handler {
@@ -92,7 +94,7 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 	audioProcessor := salutespeech.NewSaluteSpeechClient(serverConfig)
 	llmClient := gigachat.NewGigaChatClient(serverConfig)
 
-	meetingProcessor := worker.NewMeetingProcessor(
+	meetingProcessor = worker.NewMeetingProcessor(
 		meetingsService,
 		tasksService,
 		transcriptionsService,

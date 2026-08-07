@@ -3,10 +3,7 @@ package worker
 import (
 	"context"
 	"log/slog"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +22,8 @@ type MeetingProcessor struct {
 	llmClient            client.LLMClient
 	processorLimit       int64
 	Meetins              chan *model.Meeting
+	stopChan             chan struct{}
+	waitGroup            sync.WaitGroup
 }
 
 func NewMeetingProcessor(
@@ -49,15 +48,15 @@ func NewMeetingProcessor(
 }
 
 func (m *MeetingProcessor) Run() {
-	stopChanSend := make(chan struct{})
-	go m.ProccessorContinousWorker(stopChanSend)
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
-	go func() {
-		sig := <-sigChan
-		slog.Info("shutdown signal received. stopping worker...", "sig", sig)
-		close(stopChanSend)
-	}()
+	m.stopChan = make(chan struct{})
+	m.waitGroup.Add(1)
+	go m.ProccessorContinousWorker()
+}
+
+func (m *MeetingProcessor) Shutdown() {
+	slog.Info("meeting processor shutdown signal received. stopping worker...")
+	close(m.stopChan)
+	m.waitGroup.Wait()
 }
 
 func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) {
@@ -66,34 +65,47 @@ func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) {
 	}()
 }
 
-func (m *MeetingProcessor) ProccessorContinousWorker(stopCh chan struct{}) {
-	var wg sync.WaitGroup
-	wg.Add(1)
+func (m *MeetingProcessor) ProccessorContinousWorker() {
 	semMaxLimit := make(chan struct{}, m.processorLimit)
 	for {
 		stopProcessing := false
 		select {
-		case <-stopCh:
+		case <-m.stopChan:
 			slog.Info("stop processing meetings")
-			wg.Done()
+			var stopWaitGroup sync.WaitGroup
+			for meeting := range m.Meetins {
+				slog.Info("meetings channel len: ", "len", len(m.Meetins))
+				stopWaitGroup.Add(1)
+				semMaxLimit <- struct{}{}
+				go func(meeting *model.Meeting) {
+					defer func() { <-semMaxLimit }()
+					m.processMeetingInWorker(meeting)
+					stopWaitGroup.Done()
+				}(meeting)
+				if len(m.Meetins) == 0 {
+					slog.Info("stop read meetings channel")
+					break
+				}
+			}
+			stopWaitGroup.Wait()
+			m.waitGroup.Done()
 			stopProcessing = true
 		default:
 			meeting := <-m.Meetins
 			semMaxLimit <- struct{}{}
 			go func(meeting *model.Meeting) {
 				defer func() { <-semMaxLimit }()
-				m.processMeeting(meeting)
+				m.processMeetingInWorker(meeting)
 			}(meeting)
 		}
 		if stopProcessing {
 			break
 		}
 	}
-	wg.Wait()
 	slog.Info("processor worker stopped")
 }
 
-func (m *MeetingProcessor) processMeeting(meeting *model.Meeting) {
+func (m *MeetingProcessor) processMeetingInWorker(meeting *model.Meeting) {
 	slog.Info("start process meeting", "name", *meeting.MeetingName, "meetingID", meeting.ID)
 
 	ctx := context.Background()
