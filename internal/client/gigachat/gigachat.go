@@ -37,7 +37,7 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 	}
 
 	request := GigaChatCompletionsRequest{
-		Model: "GigaChat",
+		Model: c.config.Model,
 		Messages: []GigaChatCompletionsMessage{
 			{
 				Role:    "system",
@@ -64,11 +64,11 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 		return "", fmt.Errorf("GigaChat client: request failed, err: %s, meetingID: %s", err, meeting.ID)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("GigaChat client: request failed, http status: %s, meetingID: %s", resp.StatusCode(), meeting.ID)
+		return "", fmt.Errorf("GigaChat client: request failed, http status: %s, body: %s, meetingID: %s", resp.StatusCode(), string(resp.Body()), meeting.ID)
 	}
 
 	var answer string
-	for _, c := range response.Choises {
+	for _, c := range response.Choices {
 		if c.Message.Role == "assistant" {
 			answer = c.Message.Content
 		}
@@ -101,7 +101,7 @@ func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error)
 Вопрос: %s`
 
 	request := GigaChatCompletionsRequest{
-		Model: "GigaChat",
+		Model: c.config.Model,
 		Messages: []GigaChatCompletionsMessage{
 			{
 				Role:    "system",
@@ -132,7 +132,7 @@ func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error)
 	}
 
 	var answer string
-	for _, c := range response.Choises {
+	for _, c := range response.Choices {
 		if c.Message.Role == "assistant" {
 			answer = c.Message.Content
 		}
@@ -159,14 +159,16 @@ func (c *GigaChatClient) getToken() (string, error) {
 	requestID := uuid.New().String()
 	resp, err := client.R().
 		SetHeader("RqUID", requestID).
+		SetHeader("Authorization", fmt.Sprintf("Basic %s", c.config.AuthKey)).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetBody("scope=GIGACHAT_API_PERS").
 		SetResult(&c.token).
-		Get(url)
+		Post(url)
 	if err != nil {
 		return "", err
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("gigachat client failed to get token, status: %s", resp.StatusCode())
+		return "", fmt.Errorf("gigachat client failed to get token, status: %s, body: %s", resp.StatusCode(), string(resp.Body()))
 	}
 	return c.token.Token, nil
 }

@@ -7,4 +7,6 @@ type GigaChatConfig struct {
 	AuthKey string `yaml:"auth_key"`
 	// ServerAddress specifies address to get make API requests
 	ServerAddress string `yaml:"server_address"`
+	// Model specifies model name
+	Model string `yaml:"model"`
 }

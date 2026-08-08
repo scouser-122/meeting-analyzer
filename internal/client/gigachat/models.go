@@ -15,11 +15,11 @@ type GigaChatCompletionsRequest struct {
 	Messages []GigaChatCompletionsMessage `json:"messages"`
 }
 
-type GigaChatCompletionsResponseChoise struct {
+type GigaChatCompletionsResponseChoice struct {
 	Message GigaChatCompletionsMessage `json:"message"`
 }
 
 type GigaChatCompletionsResponse struct {
 	Model   string                              `json:"model"`
-	Choises []GigaChatCompletionsResponseChoise `json:"choises"`
+	Choices []GigaChatCompletionsResponseChoice `json:"choices"`
 }

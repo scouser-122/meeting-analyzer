@@ -67,6 +67,7 @@ func (s *PostgresUserRepository) GetByID(ctx context.Context, id string) (*model
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Error("user not found", "id", id)
 			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error(err.Error())

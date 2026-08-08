@@ -68,6 +68,7 @@ func (r *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*model
 	task, err := r.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Error("task not found")
 			return nil, &models.CustomErr{Message: "task not found", HTTPStatus: http.StatusBadRequest}
 		}
 		logger.Error(err.Error())
@@ -81,6 +82,7 @@ func (r *PostgresTaskRepository) GetByMeetingID(ctx context.Context, meetingID s
 	task, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Error("task not found")
 			return nil, fmt.Errorf("task not found")
 		}
 		logger.Error(err.Error())

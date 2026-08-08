@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 var jwtService *service.JwtService
 
 func handleGetToken(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -66,7 +67,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	log.Println("received request via /v1/chat/completions")
 
 	var question string
-	var choises []gigachat.GigaChatCompletionsResponseChoise
+	var choises []gigachat.GigaChatCompletionsResponseChoice
 	for _, m := range request.Messages {
 		if m.Role == "user" {
 			if strings.Index(m.Content, "Напиши краткую выжимку") == 0 {
@@ -75,7 +76,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				question = "intent_extract"
 			}
 		}
-		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoice{
 			Message: gigachat.GigaChatCompletionsMessage{
 				Role:    m.Role,
 				Content: m.Content,
@@ -84,14 +85,14 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if question == "summary" {
-		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoice{
 			Message: gigachat.GigaChatCompletionsMessage{
 				Role:    "assistant",
 				Content: "На встрече обсуждали добавление нового параметра priority в метод создания заказа. Договорились реализовать и протестировать функционал в этот же день.",
 			},
 		})
 	} else if question == "intent_extract" {
-		choises = append(choises, gigachat.GigaChatCompletionsResponseChoise{
+		choises = append(choises, gigachat.GigaChatCompletionsResponseChoice{
 			Message: gigachat.GigaChatCompletionsMessage{
 				Role:    "assistant",
 				Content: `{"is_meeting_query": true, "keywords": ["добавить", "новый", "параметр", "API", "срочно"], "topic": "Добавление нового параметра в API"}`,
@@ -99,13 +100,15 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	slices.Reverse(choises)
+
 	log.Println("choises len: ", len(choises))
 
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	if err := enc.Encode(gigachat.GigaChatCompletionsResponse{
 		Model:   "GigaChat",
-		Choises: choises,
+		Choices: choises,
 	}); err != nil {
 		log.Println("error process request /v1/chat/completions: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
