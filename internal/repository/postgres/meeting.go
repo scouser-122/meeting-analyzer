@@ -123,3 +123,27 @@ func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, user
 	}
 	return result, nil
 }
+
+// NewPostgresMeetingRepositoryFromPool creates Postgres meetings storage from pool interface (for testing with pgxmock)
+func NewPostgresMeetingRepositoryFromPool(pool QueryExecutor) *PostgresMeetingRepository {
+	mapper := func(row pgx.Row) (*model.Meeting, error) {
+		var meeting model.Meeting
+		err := row.Scan(
+&meeting.ID,
+			&meeting.UserID,
+			&meeting.MeetingName,
+			&meeting.FilePath,
+			&meeting.OriginalFilename,
+			&meeting.CreatedAt,
+			&meeting.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return &meeting, err
+	}
+	return &PostgresMeetingRepository{
+		Database: &PostgresDatabase{},
+		repo:     NewGenericRepositoryFromExecutor(pool, "meetings", "id", mapper),
+	}
+}

@@ -106,3 +106,26 @@ func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, st
 	}
 	return nil
 }
+
+// NewPostgresTaskRepositoryFromPool creates Postgres tasks storage from pool interface (for testing with pgxmock)
+func NewPostgresTaskRepositoryFromPool(pool QueryExecutor) *PostgresTaskRepository {
+	mapper := func(row pgx.Row) (*model.Task, error) {
+		var task model.Task
+		err := row.Scan(
+&task.ID,
+			&task.MeetingID,
+			&task.Status,
+			&task.ErrorMessage,
+			&task.CreatedAt,
+			&task.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return &task, err
+	}
+	return &PostgresTaskRepository{
+		Database: &PostgresDatabase{},
+		repo:     NewGenericRepositoryFromExecutor(pool, "tasks", "id", mapper),
+	}
+}

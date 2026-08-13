@@ -40,6 +40,32 @@ func NewMeetingProcessor(
 	summarizeProcessor client.LLMClient,
 	serverConfig *config.ServerConfig,
 ) *MeetingProcessor {
+	return NewMeetingProcessorWithBuffer(
+		meetingService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+		repositorUtils,
+		audioProcessor,
+		summarizeProcessor,
+		serverConfig,
+		10,
+	)
+}
+
+// NewMeetingProcessorWithBuffer создаёт MeetingProcessor с указанным размером буфера канала.
+// Полезно для тестирования сценария переполненного канала.
+func NewMeetingProcessorWithBuffer(
+	meetingService *service.MeetingsService,
+	tasksService *service.TasksService,
+	transcriptionService *service.TranscriptionService,
+	summaryService *service.SummaryService,
+	repositorUtils repository.RepositoryUtils,
+	audioProcessor client.AudioProcessor,
+	summarizeProcessor client.LLMClient,
+	serverConfig *config.ServerConfig,
+	bufferSize int,
+) *MeetingProcessor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &MeetingProcessor{
 		meetingService:       meetingService,
@@ -49,7 +75,7 @@ func NewMeetingProcessor(
 		repositoryUtils:      repositorUtils,
 		audioProcessor:       audioProcessor,
 		llmClient:            summarizeProcessor,
-		meetingsCh:           make(chan *model.Meeting, 10),
+		meetingsCh:           make(chan *model.Meeting, bufferSize),
 		maxWorkers:           *serverConfig.ProcessorLimit,
 		ctx:                  ctx,
 		cancel:               cancel,

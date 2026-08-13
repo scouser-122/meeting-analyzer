@@ -60,7 +60,7 @@ func main() {
 	}
 	go func() {
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error: %v", err)
+			slog.Error("server error", "err", err)
 			panic(err)
 		}
 	}()
