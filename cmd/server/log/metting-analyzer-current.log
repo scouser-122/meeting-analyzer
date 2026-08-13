@@ -1,0 +1,6 @@
+{"time":"2026-08-13T14:35:59.94829+03:00","level":"INFO","msg":"successfully connected to DB"}
+{"time":"2026-08-13T14:35:59.972067+03:00","level":"INFO","msg":"DB migrations completed successfully"}
+{"time":"2026-08-13T14:35:59.972809+03:00","level":"INFO","msg":"starting server","address":"localhost:45057"}
+{"time":"2026-08-13T14:36:04.992574+03:00","level":"INFO","msg":"successfully connected to DB"}
+{"time":"2026-08-13T14:36:05.021104+03:00","level":"INFO","msg":"DB migrations completed successfully"}
+{"time":"2026-08-13T14:36:05.021929+03:00","level":"INFO","msg":"starting server","address":"localhost:45057"}

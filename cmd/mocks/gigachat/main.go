@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strings"
@@ -65,6 +66,8 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("received request via /v1/chat/completions")
+
+	time.Sleep(time.Duration(1000+rand.IntN(500)) * time.Millisecond)
 
 	var question string
 	var choises []gigachat.GigaChatCompletionsResponseChoice

@@ -79,11 +79,11 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 	usersRepo := postgres.NewPostgresUserRepository(&database)
 	usersService := service.NewUsersService(usersRepo)
 
-	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
-	meetingsService := service.NewMeetingsService(meetingsRepo, usersRepo, repositoryUtils, serverConfig)
-
 	tasksRepo := postgres.NewPostgresTaskRepository(&database)
 	tasksService := service.NewTasksService(tasksRepo, repositoryUtils)
+
+	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
+	meetingsService := service.NewMeetingsService(meetingsRepo, repositoryUtils, usersService, tasksService, serverConfig)
 
 	transcriptionsRepo := postgres.NewPostgresTranscriptionRepository(&database)
 	transcriptionsService := service.NewTranscriptionService(transcriptionsRepo, repositoryUtils)
@@ -99,6 +99,7 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 		tasksService,
 		transcriptionsService,
 		summaryService,
+		repositoryUtils,
 		audioProcessor,
 		llmClient,
 		serverConfig,

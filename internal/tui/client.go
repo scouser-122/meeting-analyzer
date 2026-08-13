@@ -63,7 +63,7 @@ func (c *TuiClient) Load(userID, meetingName, filePath string) (*models.LoadResp
 	if err != nil {
 		return nil, fmt.Errorf("create form file: %w", err)
 	}
-	if _, err := io.Copy(filePart, file); err != nil {
+	if _, err = io.Copy(filePart, file); err != nil {
 		return nil, fmt.Errorf("copy file: %w", err)
 	}
 

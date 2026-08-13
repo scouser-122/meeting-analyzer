@@ -54,14 +54,14 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 	}
 
 	var request models.ChatRequest
-	if err := json.Unmarshal(bodyBuf, &request); err != nil {
+	if err = json.Unmarshal(bodyBuf, &request); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
 		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
 		return
 	}
 
-	intent, err := h.llmClient.ExtractIntent(request.Question)
+	intent, err := h.llmClient.ExtractIntent(req.Context(), request.Question)
 	if err != nil {
 		logger.Error("llm client extract intenr error", "err", err)
 		res.WriteHeader(http.StatusInternalServerError)

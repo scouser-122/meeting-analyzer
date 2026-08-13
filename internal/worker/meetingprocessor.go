@@ -10,6 +10,8 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/client"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
+	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
+	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
@@ -18,12 +20,14 @@ type MeetingProcessor struct {
 	tasksService         *service.TasksService
 	transcriptionService *service.TranscriptionService
 	summaryService       *service.SummaryService
+	repositoryUtils      repository.RepositoryUtils
 	audioProcessor       client.AudioProcessor
 	llmClient            client.LLMClient
-	processorLimit       int64
-	Meetins              chan *model.Meeting
-	stopChan             chan struct{}
-	shutdownWaitGroup    sync.WaitGroup
+	meetingsCh           chan *model.Meeting
+	maxWorkers           int
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	wg                   sync.WaitGroup
 }
 
 func NewMeetingProcessor(
@@ -31,106 +35,124 @@ func NewMeetingProcessor(
 	tasksService *service.TasksService,
 	transcriptionService *service.TranscriptionService,
 	summaryService *service.SummaryService,
+	repositorUtils repository.RepositoryUtils,
 	audioProcessor client.AudioProcessor,
 	summarizeProcessor client.LLMClient,
 	serverConfig *config.ServerConfig,
 ) *MeetingProcessor {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &MeetingProcessor{
 		meetingService:       meetingService,
 		tasksService:         tasksService,
 		transcriptionService: transcriptionService,
 		summaryService:       summaryService,
+		repositoryUtils:      repositorUtils,
 		audioProcessor:       audioProcessor,
 		llmClient:            summarizeProcessor,
-		Meetins:              make(chan *model.Meeting, 10),
-		processorLimit:       *serverConfig.ProcessorLimit,
+		meetingsCh:           make(chan *model.Meeting, 10),
+		maxWorkers:           *serverConfig.ProcessorLimit,
+		ctx:                  ctx,
+		cancel:               cancel,
 	}
 }
 
 func (m *MeetingProcessor) Run() {
-	m.stopChan = make(chan struct{})
-	m.shutdownWaitGroup.Add(1)
-	go m.ProccessorContinousWorker()
+	for i := 0; i < m.maxWorkers; i++ {
+		m.wg.Add(1)
+		go m.worker(i)
+	}
 }
 
 func (m *MeetingProcessor) Shutdown() {
 	slog.Info("meeting processor shutdown signal received. stopping worker...")
-	close(m.stopChan)
-	m.shutdownWaitGroup.Wait()
+	m.cancel()
+	close(m.meetingsCh)
+	m.wg.Wait()
 }
 
-func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) {
-	go func() {
-		m.Meetins <- meeting
-	}()
+func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) bool {
+	select {
+	case m.meetingsCh <- meeting:
+		return true
+	default:
+		return false // channel full, task rejected
+	}
 }
 
-func (m *MeetingProcessor) ProccessorContinousWorker() {
-	semMaxLimit := make(chan struct{}, m.processorLimit)
+func (m *MeetingProcessor) worker(id int) {
+	defer m.wg.Done()
+
 	for {
-		stopProcessing := false
 		select {
-		case <-m.stopChan:
-			slog.Info("stop processing meetings")
-			if len(m.Meetins) > 0 {
-				var stopWaitGroup sync.WaitGroup
-				for meeting := range m.Meetins {
-					slog.Info("meetings channel len: ", "len", len(m.Meetins))
-					stopWaitGroup.Add(1)
-					semMaxLimit <- struct{}{}
-					go func(meeting *model.Meeting) {
-						defer func() { <-semMaxLimit }()
-						m.processMeetingInWorker(meeting)
-						stopWaitGroup.Done()
-					}(meeting)
-					if len(m.Meetins) == 0 {
-						slog.Info("stop read meetings channel")
-						break
-					}
-				}
-				stopWaitGroup.Wait()
+		case <-m.ctx.Done():
+			slog.Info("processor worker stopping", "id", id)
+			return
+		case meeting, ok := <-m.meetingsCh:
+			if !ok {
+				slog.Info("prcessor worker task channel closed", "id", id)
+				return
 			}
-			m.shutdownWaitGroup.Done()
-			stopProcessing = true
-		default:
-			if len(m.Meetins) > 0 {
-				meeting := <-m.Meetins
-				semMaxLimit <- struct{}{}
-				go func(meeting *model.Meeting) {
-					defer func() { <-semMaxLimit }()
-					m.processMeetingInWorker(meeting)
-				}(meeting)
-			} else {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-		if stopProcessing {
-			break
+			m.processMeetingInWorker(id, meeting)
 		}
 	}
-	slog.Info("processor worker stopped")
 }
 
-func (m *MeetingProcessor) processMeetingInWorker(meeting *model.Meeting) {
-	slog.Info("start process meeting", "name", *meeting.MeetingName, "meetingID", meeting.ID)
+func (m *MeetingProcessor) processMeetingInWorker(workerID int, meeting *model.Meeting) {
+	pLogger := slog.Default().With(
+		slog.String("meeting_id", meeting.ID),
+		slog.String("meeting_name", *meeting.MeetingName),
+	)
+	ctx := context.WithValue(m.ctx, logger.LoggerKey, pLogger)
+	pLogger.Info("start process meeting")
 
-	ctx := context.Background()
+	defer m.cleanUpAfterProcessing(ctx, meeting)
 
-	task, err := m.tasksService.CreateNewTask(ctx, meeting.ID)
+	task, err := m.tasksService.GetByMeetingID(ctx, meeting.ID)
 	if err != nil {
-		slog.Error("processor can't create task", "err", err, "meetingID", meeting.ID)
+		pLogger.Error("processor can't obtain task", "err", err)
 		return
 	}
 	taskID := task.ID
-	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusProcessing, nil)
-
-	transcriptionText, err := m.audioProcessor.TranscribeAudio(meeting)
+	err = m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusProcessing, nil)
 	if err != nil {
-		slog.Error("processor can't transcribe audio", "err", err, "meetingID", meeting.ID)
-		errMessage := err.Error()
-		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+		pLogger.Error("processor can't update task status", "err", err)
 		return
 	}
+
+	transcriptionText, err := m.transcribeAudio(ctx, taskID, meeting)
+	if err != nil {
+		pLogger.Error("processor can't transcribe audio", "err", err)
+		m.markTaskFailed(m.ctx, taskID, err)
+		return
+	}
+
+	err = m.summarizeTranscription(ctx, taskID, transcriptionText, meeting)
+	if err != nil {
+		pLogger.Error("processor can't summarize transcription", "err", err)
+		m.markTaskFailed(ctx, taskID, err)
+		return
+	}
+
+	err = m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusCompleted, nil)
+	if err != nil {
+		pLogger.Error("processor can't update task status", "err", err)
+		return
+	}
+
+	pLogger.Info("meeting successfully processed")
+}
+
+func (m *MeetingProcessor) transcribeAudio(ctx context.Context, taskID string, meeting *model.Meeting) (string, error) {
+	transcriptionText, err := m.audioProcessor.TranscribeAudio(ctx, meeting)
+	if err != nil {
+		return "", err
+	}
+
+	tx, err := m.repositoryUtils.CreateTransaction(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
 
 	err = m.transcriptionService.AddNewTranscription(ctx, &model.Transcription{
 		ID:        uuid.New().String(),
@@ -140,21 +162,38 @@ func (m *MeetingProcessor) processMeetingInWorker(meeting *model.Meeting) {
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
-		slog.Error("processor can't save transcription", "err", err, "meetingID", meeting.ID)
-		errMessage := err.Error()
-		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
-		return
+		return "", err
 	}
-	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusTranscribed, nil)
 
-	summary, err := m.llmClient.SummarizeTranscription(meeting, transcriptionText)
+	err = m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusTranscribed, nil)
 	if err != nil {
-		slog.Error("LLM client can't summarize transcription", "err", err, "meetingID", meeting.ID)
-		errMessage := err.Error()
-		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
-		return
+		return "", err
 	}
-	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusSummarized, nil)
+
+	err = m.repositoryUtils.CommitTransaction(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+
+	return transcriptionText, nil
+}
+
+func (m *MeetingProcessor) summarizeTranscription(
+	ctx context.Context,
+	taskID string,
+	transcriptionText string,
+	meeting *model.Meeting,
+) error {
+	summary, err := m.llmClient.SummarizeTranscription(ctx, meeting, transcriptionText)
+	if err != nil {
+		return err
+	}
+
+	tx, err := m.repositoryUtils.CreateTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 
 	err = m.summaryService.AddNewSummary(ctx, &model.Summary{
 		ID:        uuid.New().String(),
@@ -164,13 +203,32 @@ func (m *MeetingProcessor) processMeetingInWorker(meeting *model.Meeting) {
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
-		slog.Error("processor can't save summarization", "err", err, "meetingID", meeting.ID)
-		errMessage := err.Error()
-		m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
-		return
+		return err
 	}
 
-	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusCompleted, nil)
+	m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusSummarized, nil)
 
-	slog.Info("meeting successfully processed", "name", *meeting.MeetingName, "meetingID", meeting.ID)
+	err = m.repositoryUtils.CommitTransaction(ctx, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *MeetingProcessor) markTaskFailed(ctx context.Context, taskID string, err error) {
+	errMessage := err.Error()
+	err = m.tasksService.UpdateStatus(ctx, taskID, model.TaskStatusFailed, &errMessage)
+	if err != nil {
+		logger := logger.GetSlogLoggerFromContext(ctx)
+		logger.Error("processor can't update task status", "err", err)
+	}
+}
+
+func (m *MeetingProcessor) cleanUpAfterProcessing(ctx context.Context, meeting *model.Meeting) {
+	err := m.meetingService.DeleteMeetingAudioFile(ctx, meeting)
+	if err != nil {
+		logger := logger.GetSlogLoggerFromContext(ctx)
+		logger.Error("can't delete meeting audio file", "err", err)
+	}
 }

@@ -2,14 +2,13 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
-	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
@@ -43,7 +42,6 @@ func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscrip
 }
 
 func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcription *model.Transcription) error {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
 	if tx != nil {
@@ -55,27 +53,23 @@ func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcript
 		transcription.ID, transcription.MeetingID, transcription.UserID, transcription.Text, time.Now(),
 	)
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }
 
 func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Transcription, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	transcription, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return transcription, nil
 }
 
 func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Transcription{}
 	const sql = `
 		SELECT id, meeting_id, user_id, text, created_at,
@@ -101,8 +95,7 @@ func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context
 					&rank,
 				)
 				if err != nil {
-					logger.Error("find by text contains - parse transcription error", "err", err)
-					return err
+					return errors.WithStack(err)
 				}
 				result = append(result, &transcription)
 			}
@@ -116,7 +109,6 @@ func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context
 }
 
 func (r *PostgresTranscriptionRepository) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Transcription{}
 	terms := append(append([]string{}, keywords...), topic)
 	tsQuery := strings.Join(terms, " | ")
@@ -145,8 +137,7 @@ func (r *PostgresTranscriptionRepository) FindByKeyWords(ctx context.Context, us
 					&rank,
 				)
 				if err != nil {
-					logger.Error("find by key words - parse transcription error", "err", err)
-					return err
+					return errors.WithStack(err)
 				}
 				result = append(result, &transcription)
 			}

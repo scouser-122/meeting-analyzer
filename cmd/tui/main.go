@@ -55,7 +55,6 @@ func main() {
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Error running TUI: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Error running TUI: %v\n", err)
 	}
 }

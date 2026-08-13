@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
@@ -23,13 +24,17 @@ func NewUsersService(
 }
 
 // Register runs registration process for specified user
-func (service *UsersService) Register(ctx context.Context, id string) error {
+func (s *UsersService) Register(ctx context.Context, id string) error {
 	if id == "" {
 		return &models.CustomErr{Message: "user id absent", HTTPStatus: http.StatusBadRequest}
 	}
-	_, err := service.usersRepo.Create(ctx, id)
+	_, err := s.usersRepo.Create(ctx, id)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (s *UsersService) GetByID(ctx context.Context, id string) (*model.User, error) {
+	return s.usersRepo.GetByID(ctx, id)
 }

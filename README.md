@@ -1,5 +1,33 @@
-# meeting-analyzer — структура проекта
+# meeting-analyzer
 
+Умный помощник для конспектирования встреч
+
+## Тех. стек
+
+Язык программирования: Go (версия 1.26.4)
+
+Основные фреймворки и библиотеки:
+- HTTP сервер: Стандартная библиотека `net/http` + `http.ServeMux`
+- Конфигурация: `github.com/caarlos0/env/v6 v6.10.1` (переменные окружения) + `gopkg.in/yaml.v3 v3.0.1` (YAML-файлы)
+- База данных: PostgreSQL с драйвером `github.com/jackc/pgx/v5 v5.10.0` (включая pgxpool, pgconn, pgerrcode). Используются SQL-миграции.
+- Миграции:`github.com/golang-migrate/migrate/v4 v4.19.1`
+- HTTP-клиенты для внешних API: `github.com/go-resty/resty/v2 v2.17.2` (GigaChat, SaluteSpeech)
+- Аутентификация: `github.com/golang-jwt/jwt/v4 v4.5.2`
+- TUI (терминальный интерфейс): `github.com/charmbracelet/bubbletea v1.3.10`, `github.com/charmbracelet/bubbles v1.0.0`, `github.com/charmbracelet/lipgloss v1.1.0` и связанные пакеты (ansi, termenv и др.)
+- Логирование: `log/slog` (стандарт) + `github.com/alchemy/rotoslog v1.0.1` (ротация файлов) + `github.com/hydraide/hydraide v1.0.0` (мульти-хендлеры)
+- Утилиты: `github.com/google/uuid v1.6.0`, встроенные пакеты `sync`, `context`, `encoding/json`, `time`, `os`, `filepath`
+
+Внешние сервисы:
+- LLM / суммаризация:__ GigaChat API (Sber)
+- Транскрипция аудио:__ SaluteSpeech API (Сбер)
+
+Дополнительно: 
+- Собственный static linter (osexitanalizer + ineffassign, honnef.co/go/tools), 
+- worker для асинхронной обработки встреч, 
+- domain-driven структура (internal/domain, service, repository, server, tui, worker).
+
+
+## Cтруктура проекта
 ```
 meeting-analyzer/
 ├── cmd/                          # Точки входа (main.go для каждого интерфейса)
@@ -26,7 +54,7 @@ meeting-analyzer/
 └── README.md
 ```
 
-## DB migrations down
+## Скрипт для отката миграций БД
 
 ```bash
 migrate -database "postgres://postgres:123@localhost:5432/meeting_analyzer?sslmode=disable" -path ./migrations down

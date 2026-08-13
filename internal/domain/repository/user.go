@@ -10,5 +10,4 @@ import (
 type UserRepository interface {
 	Create(ctx context.Context, id string) (*model.User, error)
 	GetByID(ctx context.Context, id string) (*model.User, error)
-	GetByExternalID(ctx context.Context, externalID string) (*model.User, error)
 }

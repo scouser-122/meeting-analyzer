@@ -1,16 +1,18 @@
 package gigachat
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
+	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
@@ -27,11 +29,11 @@ func NewGigaChatClient(
 	}
 }
 
-func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text string) (string, error) {
-	slog.Info("GigaChat client: start summarizing transcription", "name", *meeting.MeetingName, "meetingID", meeting.ID)
-	client := resty.New()
+func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *model.Meeting, transcriptionText string) (string, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	logger.Info("GigaChat client: start summarizing transcription")
 
-	token, err := c.getToken()
+	token, err := c.getToken(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -45,14 +47,16 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 			},
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи:\n%s", text),
+				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи:\n%s", transcriptionText),
 			},
 		},
 	}
 
 	var response GigaChatCompletionsResponse
 	requestID := uuid.New().String()
+	client := resty.New()
 	resp, err := client.R().
+		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("X-Request-ID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
@@ -64,7 +68,7 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 		return "", fmt.Errorf("GigaChat client: request failed, err: %s, meetingID: %s", err, meeting.ID)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("GigaChat client: request failed, http status: %s, body: %s, meetingID: %s", resp.StatusCode(), string(resp.Body()), meeting.ID)
+		return "", fmt.Errorf("GigaChat client: request failed, http status: %d, body: %s, meetingID: %s", resp.StatusCode(), string(resp.Body()), meeting.ID)
 	}
 
 	var answer string
@@ -76,15 +80,15 @@ func (c *GigaChatClient) SummarizeTranscription(meeting *model.Meeting, text str
 	if answer == "" {
 		return "", fmt.Errorf("GigaChat client: response doesn't contain answer, meetingID: %s", meeting.ID)
 	}
-	slog.Info("GigaChat client: transcription summarization finished successfully", "name", *meeting.MeetingName, "meetingID", meeting.ID)
+	logger.Info("GigaChat client: transcription summarization finished successfully")
 
 	return answer, nil
 }
 
-func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error) {
+func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*models.QueryIntent, error) {
 	client := resty.New()
 
-	token, err := c.getToken()
+	token, err := c.getToken(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +121,7 @@ func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error)
 	var response GigaChatCompletionsResponse
 	requestID := uuid.New().String()
 	resp, err := client.R().
+		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("X-Request-ID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
@@ -128,7 +133,7 @@ func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error)
 		return nil, fmt.Errorf("gigachat client extract intent request failed, err: %s", err)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("gigachat client extract intent request failed, http status: %s", resp.StatusCode())
+		return nil, fmt.Errorf("gigachat client extract intent request failed, http status: %d", resp.StatusCode())
 	}
 
 	var answer string
@@ -148,7 +153,7 @@ func (c *GigaChatClient) ExtractIntent(text string) (*models.QueryIntent, error)
 	return &intent, nil
 }
 
-func (c *GigaChatClient) getToken() (string, error) {
+func (c *GigaChatClient) getToken(ctx context.Context) (string, error) {
 	if c.token.Token != "" && time.Now().Before(time.Unix(c.token.ExpiresAt, 0)) {
 		return c.token.Token, nil
 	}
@@ -158,6 +163,7 @@ func (c *GigaChatClient) getToken() (string, error) {
 
 	requestID := uuid.New().String()
 	resp, err := client.R().
+		SetContext(ctx).
 		SetHeader("RqUID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Basic %s", c.config.AuthKey)).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
@@ -165,10 +171,10 @@ func (c *GigaChatClient) getToken() (string, error) {
 		SetResult(&c.token).
 		Post(url)
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 	if resp.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("gigachat client failed to get token, status: %s, body: %s", resp.StatusCode(), string(resp.Body()))
+		return "", fmt.Errorf("gigachat client failed to get token, status: %d, body: %s", resp.StatusCode(), string(resp.Body()))
 	}
 	return c.token.Token, nil
 }

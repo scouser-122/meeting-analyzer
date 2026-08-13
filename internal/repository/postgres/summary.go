@@ -2,13 +2,12 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
-	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
@@ -42,7 +41,6 @@ func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryReposito
 }
 
 func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.Summary) error {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
 	if tx != nil {
@@ -54,27 +52,23 @@ func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.S
 		summary.ID, summary.MeetingID, summary.UserID, summary.Text, time.Now(),
 	)
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }
 
 func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Summary, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	summary, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("summary not found")
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return summary, nil
 }
 
 func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Summary{}
 	const sql = `
 		SELECT id, meeting_id, user_id, text, created_at,
@@ -100,8 +94,7 @@ func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, user
 					&rank,
 				)
 				if err != nil {
-					logger.Error("find by text contains - parse summary error", "err", err)
-					return err
+					return errors.WithStack(err)
 				}
 				result = append(result, &summary)
 			}

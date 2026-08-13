@@ -111,7 +111,9 @@ func styleMeetingStatus(status string) string {
 func formatMeeting(m models.MeetingResponseData) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("ID: %s\n", m.ID))
-	sb.WriteString(fmt.Sprintf("Name: %s\n", *m.Name))
+	if m.Name != nil {
+		sb.WriteString(fmt.Sprintf("Name: %s\n", *m.Name))
+	}
 	sb.WriteString(fmt.Sprintf("Created: %s\n", m.CreatedAt))
 	sb.WriteString(fmt.Sprintf("Status: %s\n", styleMeetingStatus(m.Status)))
 	if m.Summary != nil {

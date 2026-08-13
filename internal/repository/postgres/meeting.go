@@ -2,14 +2,13 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
-	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
@@ -44,7 +43,6 @@ func NewPostgresMeetingRepository(db *PostgresDatabase) *PostgresMeetingReposito
 }
 
 func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (*model.Meeting, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
 	if tx != nil {
@@ -53,27 +51,23 @@ func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (
 	id := uuid.New().String()
 	meeting, err := repo.Create(ctx, "id,user_id,created_at,updated_at", id, userID, time.Now(), time.Now())
 	if err != nil {
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return meeting, nil
 }
 
 func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*model.Meeting, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	meeting, err := r.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, &models.CustomErr{Message: "meeting not found", HTTPStatus: http.StatusNotFound}
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return meeting, nil
 }
 
 func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.Meeting) error {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
 	if tx != nil {
@@ -89,16 +83,14 @@ func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.M
 		meeting.ID,
 	)
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		return errors.WithStack(err)
 	}
-	return err
+	return nil
 }
 
 const meetingsPageSize = 10
 
 func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Meeting{}
 	for meetings, err := range r.repo.GetAllConditional(
 		ctx,
@@ -108,8 +100,7 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 		meetingsPageSize,
 	) {
 		if err != nil {
-			logger.Error(err.Error())
-			return []*model.Meeting{}, err
+			return []*model.Meeting{}, errors.WithStack(err)
 		}
 		result = append(result, meetings...)
 	}
@@ -117,7 +108,6 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 }
 
 func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	result := []*model.Meeting{}
 	for meetings, err := range r.repo.GetAllConditional(
 		ctx,
@@ -127,8 +117,7 @@ func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, user
 		meetingsPageSize,
 	) {
 		if err != nil {
-			logger.Error(err.Error())
-			return []*model.Meeting{}, err
+			return []*model.Meeting{}, errors.WithStack(err)
 		}
 		result = append(result, meetings...)
 	}

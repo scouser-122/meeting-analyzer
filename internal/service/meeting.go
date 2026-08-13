@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
@@ -22,22 +23,25 @@ import (
 // MeetingsService service to work with meetings
 type MeetingsService struct {
 	meetingsRepo    repository.MeetingRepository
-	usersRepo       repository.UserRepository
 	repositoryUtils repository.RepositoryUtils
+	usersService    *UsersService
+	tasksService    *TasksService
 	uploadDir       string
 }
 
 // MeetingsService creates new MeetingsService instance
 func NewMeetingsService(
 	meetingsRepo repository.MeetingRepository,
-	usersRepo repository.UserRepository,
 	repositoryUtils repository.RepositoryUtils,
+	usersService *UsersService,
+	tasksService *TasksService,
 	serverConfig *config.ServerConfig,
 ) *MeetingsService {
 	service := MeetingsService{}
 	service.meetingsRepo = meetingsRepo
-	service.usersRepo = usersRepo
 	service.repositoryUtils = repositoryUtils
+	service.usersService = usersService
+	service.tasksService = tasksService
 	service.uploadDir = *serverConfig.UploadFileDir
 	return &service
 }
@@ -49,8 +53,8 @@ var allowedExts = map[string]bool{
 	".ogg": true,
 }
 
-// Load runs registration process for specified user
-func (s *MeetingsService) Load(
+// CreateFromAudioFile saves audio file from request to server FS and created new meeting record in DB
+func (s *MeetingsService) CreateFromAudioFile(
 	ctx context.Context,
 	meeting *model.Meeting,
 	file multipart.File,
@@ -63,7 +67,7 @@ func (s *MeetingsService) Load(
 		}
 	}
 
-	_, err := s.usersRepo.GetByID(ctx, meeting.UserID)
+	_, err := s.usersService.GetByID(ctx, meeting.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +95,11 @@ func (s *MeetingsService) Load(
 	}
 
 	err = s.meetingsRepo.Update(ctx, newMeeting)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = s.tasksService.CreateNewTask(ctx, newMeeting.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +137,7 @@ func (s *MeetingsService) saveMeetingFileToFS(
 		}
 	}
 
-	if err := os.MkdirAll(s.uploadDir, 0o755); err != nil {
+	if err = os.MkdirAll(s.uploadDir, 0o755); err != nil {
 		logger.Error("mkdir failed", "err", err)
 		return &models.CustomErr{
 			Message:    "internal error",
@@ -177,6 +186,22 @@ func newFileID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func (s *MeetingsService) DeleteMeetingAudioFile(
+	ctx context.Context,
+	meeting *model.Meeting,
+) error {
+	err := os.RemoveAll(*meeting.FilePath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	meeting.FilePath = nil
+	err = s.meetingsRepo.Update(ctx, meeting)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func (s *MeetingsService) GetByID(ctx context.Context, meetingID string) (*model.Meeting, error) {
