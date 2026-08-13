@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/scouser-122/meeting-analyzer/internal/client"
+	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
@@ -81,20 +82,27 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 		}
 
 		if len(transcriptions) > 0 {
-			t := transcriptions[0]
-			summary, err := h.summaryService.GetSummary(req.Context(), t.MeetingID)
-			if err != nil {
-				handleServiceError(err, res)
-				return
-			}
-			if summary == nil {
-				chatResponse.Answer = "Не удалось найти встречу по указанной теме"
-			} else {
-				meeting, err := h.meetingsService.GetByID(req.Context(), t.MeetingID)
+			var summary *string
+			var meeting *model.Meeting
+			for _, t := range transcriptions {
+				summary, err = h.summaryService.GetSummary(req.Context(), t.MeetingID)
 				if err != nil {
 					handleServiceError(err, res)
 					return
 				}
+				if summary == nil {
+					continue
+				}
+				meeting, err = h.meetingsService.GetByID(req.Context(), t.MeetingID)
+				if err != nil {
+					handleServiceError(err, res)
+					return
+				}
+				break
+			}
+			if summary == nil {
+				chatResponse.Answer = "Не удалось найти встречу по указанной теме"
+			} else {
 				chatResponse.Answer = fmt.Sprintf("Название встречи:\n%s\n\nДата создания:\n%s\n\nКраткая выжимка:\n%s", *meeting.MeetingName, meeting.UpdatedAt, *summary)
 			}
 		} else {

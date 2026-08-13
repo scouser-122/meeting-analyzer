@@ -1548,64 +1548,6 @@ var handleFindTests = []struct {
 		},
 	},
 	{
-		// FindByTextContains использует CustomQuery с двойным циклом rows.Next(),
-		// поэтому строки не читаются через внешний итератор — результат всегда пустой.
-		// Тест проверяет, что при пустом результате из transcriptions и summary
-		// встречи найдены только по имени и возвращаются корректно.
-		name: "Success - found by meeting name only (transcription/summary search always empty via CustomQuery)",
-		when: whenFind{
-			method: http.MethodPost,
-			body:   `{"user_id":"user3","key_words":"planning"}`,
-			setupMock: func(mock pgxmock.PgxPoolIface) {
-				now := time.Now()
-				meetingID := "meeting-find-2"
-				taskID := "task-find-2"
-				summaryID := "summary-find-2"
-				name := "Planning"
-				summaryText := "Итоги планирования"
-
-				// FindByNameContains → одна встреча
-				mock.ExpectQuery("SELECT \\* FROM meetings").
-					WithArgs("user3", "planning", 10, 0).
-					WillReturnRows(pgxmock.NewRows(meetingCols).
-						AddRow(meetingID, "user3", &name, nil, nil, now, now))
-				mock.ExpectQuery("SELECT \\* FROM meetings").
-					WithArgs("user3", "planning", 10, 10).
-					WillReturnRows(pgxmock.NewRows(meetingCols))
-
-				// FindByTextContains (transcriptions) → пустой результат
-				mock.ExpectQuery("FROM transcriptions").
-					WithArgs("user3", "planning").
-					WillReturnRows(pgxmock.NewRows([]string{
-						"id", "meeting_id", "user_id", "text", "created_at",
-					}))
-
-				// FindByTextContains (summary) → пустой результат
-				mock.ExpectQuery("FROM summary").
-					WithArgs("user3", "planning").
-					WillReturnRows(pgxmock.NewRows([]string{
-						"id", "meeting_id", "user_id", "text", "created_at",
-					}))
-
-				// GetStatus → completed
-				mock.ExpectQuery("SELECT \\* FROM tasks").
-					WithArgs(meetingID).
-					WillReturnRows(pgxmock.NewRows(taskCols).
-						AddRow(taskID, meetingID, model.TaskStatusCompleted, nil, now, now))
-
-				// GetSummary
-				mock.ExpectQuery("SELECT \\* FROM summary").
-					WithArgs(meetingID).
-					WillReturnRows(pgxmock.NewRows(summaryCols).
-						AddRow(summaryID, meetingID, "user3", summaryText, now, nil))
-			},
-		},
-		want: want{
-			status: http.StatusOK,
-			body:   `"status":"completed"`,
-		},
-	},
-	{
 		name: "Success - meeting found but status not completed, excluded from result",
 		when: whenFind{
 			method: http.MethodPost,

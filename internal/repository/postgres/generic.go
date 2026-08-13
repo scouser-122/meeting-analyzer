@@ -198,11 +198,9 @@ func (r *GenericRepository[T]) CustomQuery(
 			if err != nil {
 				return err
 			}
-			for rows.Next() {
-				err = scanner(rows)
-				if err != nil {
-					return err
-				}
+			err = scanner(rows)
+			if err != nil {
+				return err
 			}
 			return nil
 		},

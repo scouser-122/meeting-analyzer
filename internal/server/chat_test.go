@@ -96,10 +96,6 @@ func newTestChatHandler(
 	return NewChatHandler(llm, meetingsService, tasksService, transcriptionService, summaryService)
 }
 
-// transcriptionRows возвращает pgxmock.Rows с нужными колонками для транскрипций.
-// Чтобы обойти двойную итерацию в CustomQuery/FindByKeyWords, нужно передать
-// N+1 строк: первая строка «поглощается» внешним rows.Next() в CustomQuery,
-// а N последующих строк сканируются внутренним циклом в scanner.
 func transcriptionRows(rows ...[]any) *pgxmock.Rows {
 	cols := pgxmock.NewRows([]string{
 		"id", "meeting_id", "user_id", "text", "created_at", "rank",
@@ -227,8 +223,6 @@ var handleChatTests = []struct {
 				},
 			},
 			setupMock: func(mock pgxmock.PgxPoolIface) {
-				// FindByKeyWords → CustomQuery → Query возвращает пустой результат.
-				// Внешний rows.Next() в CustomQuery сразу вернёт false → scanner не вызывается.
 				mock.ExpectQuery("SELECT id, meeting_id, user_id, text, created_at").
 					WithArgs("user2", pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnRows(transcriptionRows())
@@ -240,10 +234,6 @@ var handleChatTests = []struct {
 		},
 	},
 	// ── 6. Транскрипция найдена, саммари отсутствует → ответ "не найдено" ────
-	//
-	// Для обхода двойной итерации в CustomQuery/FindByKeyWords передаём 2 строки:
-	// внешний rows.Next() поглощает строку 1, внутренний scanner сканирует строку 2.
-	// GetSummary возвращает nil (summary not found) → ответ "не найдено".
 	{
 		name: "Success - transcription found but summary is nil",
 		when: whenChat{
@@ -265,7 +255,6 @@ var handleChatTests = []struct {
 				mock.ExpectQuery("SELECT id, meeting_id, user_id, text, created_at").
 					WithArgs("user3", pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnRows(transcriptionRows(
-						[]any{"tr-dummy", meetingID, "user3", "dummy", now, 0.1},
 						[]any{"tr-id-3", meetingID, "user3", "текст транскрипции", now, 0.5},
 					))
 
@@ -309,7 +298,6 @@ var handleChatTests = []struct {
 				mock.ExpectQuery("SELECT id, meeting_id, user_id, text, created_at").
 					WithArgs("user4", pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnRows(transcriptionRows(
-						[]any{"tr-dummy", meetingID, "user4", "dummy", now, 0.1},
 						[]any{"tr-id-4", meetingID, "user4", "текст про релиз", now, 0.9},
 					))
 
@@ -359,7 +347,6 @@ var handleChatTests = []struct {
 				mock.ExpectQuery("SELECT id, meeting_id, user_id, text, created_at").
 					WithArgs("user6", pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnRows(transcriptionRows(
-						[]any{"tr-dummy", meetingID, "user6", "dummy", now, 0.1},
 						[]any{"tr-id-6", meetingID, "user6", "текст про архитектуру", now, 0.7},
 					))
 
@@ -399,7 +386,6 @@ var handleChatTests = []struct {
 				mock.ExpectQuery("SELECT id, meeting_id, user_id, text, created_at").
 					WithArgs("user7", pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnRows(transcriptionRows(
-						[]any{"tr-dummy", meetingID, "user7", "dummy", now, 0.1},
 						[]any{"tr-id-7", meetingID, "user7", "текст про тестирование", now, 0.8},
 					))
 
