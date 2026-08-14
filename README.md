@@ -18,8 +18,8 @@
 - Утилиты: `github.com/google/uuid v1.6.0`, встроенные пакеты `sync`, `context`, `encoding/json`, `time`, `os`, `filepath`
 
 Внешние сервисы:
-- LLM / суммаризация:__ GigaChat API (Sber)
-- Транскрипция аудио:__ SaluteSpeech API (Сбер)
+- LLM / суммаризация: GigaChat API (Sber)
+- Транскрипция аудио: SaluteSpeech API (Сбер)
 
 Дополнительно: 
 - Собственный static linter (osexitanalizer + ineffassign, honnef.co/go/tools), 
@@ -54,8 +54,24 @@ meeting-analyzer/
 └── README.md
 ```
 
-## Скрипт для отката миграций БД
+## Команды
 
+### Запуск линтера 
+```bash
+go vet -vettool=./cmd/staticlint/multichecker ./...
+```
+
+### Запуск интеграционных и юнит тестов 
+```bash
+go test ./...
+```
+
+### Запуск теста на race condition
+```bash
+go test -race ./internal/worker/...
+```
+
+### Скрипт для отката миграций БД
 ```bash
 migrate -database "postgres://postgres:123@localhost:5432/meeting_analyzer?sslmode=disable" -path ./migrations down
 ```

@@ -91,9 +91,9 @@ func (m *MeetingProcessor) Run() {
 
 func (m *MeetingProcessor) Shutdown() {
 	slog.Info("meeting processor shutdown signal received. stopping worker...")
-	m.cancel()
 	close(m.meetingsCh)
 	m.wg.Wait()
+	m.cancel()
 }
 
 func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) bool {
