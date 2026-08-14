@@ -63,15 +63,15 @@ func (c *TelegramClient) UploadMeeting(userID, name, filename string, file io.Re
 	if err != nil {
 		return nil, fmt.Errorf("create file part: %w", err)
 	}
-	if _, err := io.Copy(filePart, file); err != nil {
+	if _, err = io.Copy(filePart, file); err != nil {
 		return nil, fmt.Errorf("write file part: %w", err)
 	}
 
-	if err := writer.WriteField("metadata", string(metadata)); err != nil {
+	if err = writer.WriteField("metadata", string(metadata)); err != nil {
 		return nil, fmt.Errorf("write metadata field: %w", err)
 	}
 
-	if err := writer.Close(); err != nil {
+	if err = writer.Close(); err != nil {
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 

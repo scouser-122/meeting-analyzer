@@ -25,7 +25,7 @@ func main() {
 
 	bot := telegram.NewTelegramBot(cfg)
 	if err := bot.Init(); err != nil {
-		log.Fatalf("failed init telegram bot: %w", err)
+		log.Fatalf("failed init telegram bot: %v", err)
 	}
 	bot.Run()
 }
