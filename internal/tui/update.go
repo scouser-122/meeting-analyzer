@@ -114,7 +114,7 @@ func (m Model) handleFormKeys(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
-		cmd := m.cycleFocus()
+		cmd = m.cycleFocus()
 		return m, cmd
 
 	case "enter":

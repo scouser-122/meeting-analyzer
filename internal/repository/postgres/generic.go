@@ -44,6 +44,22 @@ func NewGenericRepository[T any](
 	}
 }
 
+// NewGenericRepositoryFromExecutor creates generic repository from executor (for testing with pgxmock)
+func NewGenericRepositoryFromExecutor[T any](
+	executor QueryExecutor,
+	table string,
+	keyName string,
+	mapper func(row pgx.Row) (*T, error),
+) *GenericRepository[T] {
+	return &GenericRepository[T]{
+		db:          executor,
+		retryConfig: config.DefaultRetryConfig(),
+		table:       table,
+		keyName:     keyName,
+		mapper:      mapper,
+	}
+}
+
 // Create creates entity, fields should be string of entity field names separated by comma
 func (r *GenericRepository[T]) Create(ctx context.Context, fields string, args ...any) (*T, error) {
 	fieldNames := strings.Split(strings.ReplaceAll(fields, " ", ""), ",")
@@ -182,11 +198,9 @@ func (r *GenericRepository[T]) CustomQuery(
 			if err != nil {
 				return err
 			}
-			for rows.Next() {
-				err = scanner(rows)
-				if err != nil {
-					return err
-				}
+			err = scanner(rows)
+			if err != nil {
+				return err
 			}
 			return nil
 		},

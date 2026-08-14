@@ -86,7 +86,7 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 
 	meetingData := model.Meeting{}
 	if raw := req.FormValue("metadata"); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &meetingData); err != nil {
+		if err = json.Unmarshal([]byte(raw), &meetingData); err != nil {
 			logger.Error("invalid metadata JSON", "err", err)
 			res.WriteHeader(http.StatusBadRequest)
 			res.Write(models.NewErrorResponseBuffer("invalid metadata JSON"))
@@ -94,15 +94,20 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	meeting, err := h.meetingsService.Load(req.Context(), &meetingData, file, header)
+	meeting, err := h.meetingsService.CreateFromAudioFile(req.Context(), &meetingData, file, header)
 	if err != nil {
 		handleServiceError(err, res)
 		return
 	}
 
-	h.meetingProcessor.ProcessMeeting(meeting)
+	if !h.meetingProcessor.ProcessMeeting(meeting) {
+		logger.Error("processing channel full, task rejected", "err", err)
+		res.WriteHeader(http.StatusTooManyRequests)
+		res.Write(models.NewErrorResponseBuffer("can't upload meeting. try again later"))
+		return
+	}
 
-	logger.Info("meeting file upload succesfully, and sent to processing queue", slog.String("id", meeting.ID))
+	logger.Info("meeting file upload succesfully, and sent to processing queue", slog.String("meetingID", meeting.ID))
 	res.WriteHeader(http.StatusAccepted)
 	res.Write(models.NewSuccessResponseBufferWithData("Файл с записью встречи успешно загружен и запущена его обработка", meeting))
 }
@@ -279,7 +284,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 	}
 
 	var request models.FindMeetingRequest
-	if err := json.Unmarshal(bodyBuf, &request); err != nil {
+	if err = json.Unmarshal(bodyBuf, &request); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
 		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
@@ -302,7 +307,8 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		if slices.ContainsFunc(meetings, func(m *model.Meeting) bool { return m.ID == t.MeetingID }) {
 			continue
 		}
-		meeting, err := h.meetingsService.GetByID(req.Context(), t.MeetingID)
+		var meeting *model.Meeting
+		meeting, err = h.meetingsService.GetByID(req.Context(), t.MeetingID)
 		if err != nil {
 			handleServiceError(err, res)
 			return
@@ -332,7 +338,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		return cmp.Compare(a.CreatedAt.UnixMilli(), b.CreatedAt.UnixMilli())
 	})
 
-	meetingsData := make([]models.MeetingResponseData, len(meetings))
+	meetingsData := []models.MeetingResponseData{}
 	for i := 0; i < len(meetings); i++ {
 		meeting := meetings[i]
 		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
@@ -348,13 +354,13 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 			handleServiceError(err, res)
 			return
 		}
-		meetingsData[i] = models.MeetingResponseData{
+		meetingsData = append(meetingsData, models.MeetingResponseData{
 			ID:        meeting.ID,
 			Name:      meeting.MeetingName,
 			CreatedAt: meeting.CreatedAt,
 			Status:    string(status),
 			Summary:   summary,
-		}
+		})
 	}
 
 	var buf bytes.Buffer

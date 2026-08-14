@@ -100,7 +100,7 @@ func handleGetRecognizeStatus(w http.ResponseWriter, r *http.Request) {
 	taskID := r.URL.Query().Get("id")
 
 	var status string
-	if recognizeTasks[taskID] == 2 {
+	if recognizeTasks[taskID] == 1 {
 		status = "DONE"
 	} else {
 		recognizeTasks[taskID] = recognizeTasks[taskID] + 1

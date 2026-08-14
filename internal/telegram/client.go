@@ -1,4 +1,4 @@
-package tui
+package telegram
 
 import (
 	"bytes"
@@ -7,20 +7,18 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
-type TuiClient struct {
+type TelegramClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
-func NewClient(baseURL string) *TuiClient {
-	return &TuiClient{
+func NewClient(baseURL string) *TelegramClient {
+	return &TelegramClient{
 		BaseURL: baseURL,
 		HTTPClient: &http.Client{
 			Timeout: 60 * time.Second,
@@ -28,7 +26,7 @@ func NewClient(baseURL string) *TuiClient {
 	}
 }
 
-func (c *TuiClient) Start(userID string) (*models.CommonResponse, error) {
+func (c *TelegramClient) Start(userID string) (*models.CommonResponse, error) {
 	body := map[string]string{"id": userID}
 	resp, err := c.doJSON("POST", "/api/users/start", body)
 	if err != nil {
@@ -36,7 +34,7 @@ func (c *TuiClient) Start(userID string) (*models.CommonResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusConflict {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 		var errResp models.CommonResponse
 		json.NewDecoder(resp.Body).Decode(&errResp)
 		return nil, fmt.Errorf("%s", errResp.Message)
@@ -49,38 +47,41 @@ func (c *TuiClient) Start(userID string) (*models.CommonResponse, error) {
 	return &result, nil
 }
 
-func (c *TuiClient) Load(userID, meetingName, filePath string) (*models.LoadResponse, error) {
-	file, err := os.Open(filePath)
+func (c *TelegramClient) UploadMeeting(userID, name, filename string, file io.Reader) (*models.LoadResponse, error) {
+	metadata, err := json.Marshal(map[string]string{
+		"user_id": userID,
+		"name":    name,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
+		return nil, fmt.Errorf("marshal metadata: %w", err)
 	}
-	defer file.Close()
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	filePart, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	filePart, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		return nil, fmt.Errorf("create form file: %w", err)
+		return nil, fmt.Errorf("create file part: %w", err)
 	}
 	if _, err = io.Copy(filePart, file); err != nil {
-		return nil, fmt.Errorf("copy file: %w", err)
+		return nil, fmt.Errorf("write file part: %w", err)
 	}
 
-	metadata := map[string]string{
-		"user_id": userID,
-		"name":    meetingName,
+	if err = writer.WriteField("metadata", string(metadata)); err != nil {
+		return nil, fmt.Errorf("write metadata field: %w", err)
 	}
-	metadataJSON, _ := json.Marshal(metadata)
-	writer.WriteField("metadata", string(metadataJSON))
 
-	writer.Close()
+	if err = writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/meetings/load", &buf)
+	contentType := writer.FormDataContentType()
+
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/api/meetings/load", &buf)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -101,7 +102,7 @@ func (c *TuiClient) Load(userID, meetingName, filePath string) (*models.LoadResp
 	return &result, nil
 }
 
-func (c *TuiClient) List(userID string) ([]models.MeetingResponseData, error) {
+func (c *TelegramClient) List(userID string) ([]models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/list?user_id=%s", c.BaseURL, userID)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -122,7 +123,7 @@ func (c *TuiClient) List(userID string) ([]models.MeetingResponseData, error) {
 	return meetings, nil
 }
 
-func (c *TuiClient) Status(userID, meetingID string) (*models.MeetingResponseData, error) {
+func (c *TelegramClient) Status(userID, meetingID string) (*models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/status?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -143,7 +144,7 @@ func (c *TuiClient) Status(userID, meetingID string) (*models.MeetingResponseDat
 	return &meeting, nil
 }
 
-func (c *TuiClient) Transcription(userID, meetingID string) (*models.TranscriptionResponseData, error) {
+func (c *TelegramClient) Transcription(userID, meetingID string) (*models.TranscriptionResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/transcription?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -164,7 +165,7 @@ func (c *TuiClient) Transcription(userID, meetingID string) (*models.Transcripti
 	return &result, nil
 }
 
-func (c *TuiClient) Find(userID, keywords string) ([]models.MeetingResponseData, error) {
+func (c *TelegramClient) Find(userID, keywords string) ([]models.MeetingResponseData, error) {
 	body := map[string]string{
 		"user_id":   userID,
 		"key_words": keywords,
@@ -188,7 +189,7 @@ func (c *TuiClient) Find(userID, keywords string) ([]models.MeetingResponseData,
 	return meetings, nil
 }
 
-func (c *TuiClient) Chat(userID, question string) (*models.ChatResponse, error) {
+func (c *TelegramClient) Chat(userID, question string) (*models.ChatResponse, error) {
 	body := map[string]string{
 		"user_id":  userID,
 		"question": question,
@@ -212,7 +213,7 @@ func (c *TuiClient) Chat(userID, question string) (*models.ChatResponse, error) 
 	return &result, nil
 }
 
-func (c *TuiClient) doJSON(method, path string, body interface{}) (*http.Response, error) {
+func (c *TelegramClient) doJSON(method, path string, body interface{}) (*http.Response, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal body: %w", err)

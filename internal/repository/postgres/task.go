@@ -2,13 +2,13 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
@@ -57,7 +57,7 @@ func (r *PostgresTaskRepository) Create(ctx context.Context, meetingID string) (
 		id, meetingID, model.TaskStatusCreated, time.Now(), time.Now(),
 	)
 	if err != nil {
-		logger.Error(err.Error())
+		logger.Error("can't create new task", "err", err)
 		return nil, err
 	}
 	return task, nil
@@ -71,28 +71,23 @@ func (r *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*model
 			logger.Error("task not found")
 			return nil, &models.CustomErr{Message: "task not found", HTTPStatus: http.StatusBadRequest}
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return task, nil
 }
 
 func (r *PostgresTaskRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Task, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	task, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Error("task not found")
 			return nil, fmt.Errorf("task not found")
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return task, nil
 }
 
 func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, status model.TaskStatus, errorMessage *string) error {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
 	if tx != nil {
@@ -107,8 +102,30 @@ func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, st
 		id,
 	)
 	if err != nil {
-		logger.Error(err.Error())
-		return err
+		return errors.WithStack(err)
 	}
-	return err
+	return nil
+}
+
+// NewPostgresTaskRepositoryFromPool creates Postgres tasks storage from pool interface (for testing with pgxmock)
+func NewPostgresTaskRepositoryFromPool(pool QueryExecutor) *PostgresTaskRepository {
+	mapper := func(row pgx.Row) (*model.Task, error) {
+		var task model.Task
+		err := row.Scan(
+&task.ID,
+			&task.MeetingID,
+			&task.Status,
+			&task.ErrorMessage,
+			&task.CreatedAt,
+			&task.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return &task, err
+	}
+	return &PostgresTaskRepository{
+		Database: &PostgresDatabase{},
+		repo:     NewGenericRepositoryFromExecutor(pool, "tasks", "id", mapper),
+	}
 }

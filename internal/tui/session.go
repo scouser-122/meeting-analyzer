@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 type Session struct {
@@ -28,7 +29,7 @@ func sessionDir() (string, error) {
 func sessionPath() (string, error) {
 	dir, err := sessionDir()
 	if err != nil {
-		return "", err
+		return "", errors.WithStack(err)
 	}
 	return filepath.Join(dir, "session.json"), nil
 }

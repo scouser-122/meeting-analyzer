@@ -2,10 +2,8 @@ package config
 
 import (
 	"flag"
-	"log"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v6"
@@ -36,7 +34,7 @@ type ServerConfig struct {
 	MaxUploadSize *int64 `env:"MAX_UPLOAD_SIZE" yaml:"max_upload_size"`
 
 	// MaxUploadSize specifies limit for simultaneous metting processing jobs
-	ProcessorLimit *int64 `env:"PROCESSOR_LIMIT" yaml:"processor_limit"`
+	ProcessorLimit *int `env:"PROCESSOR_LIMIT" yaml:"processor_limit"`
 
 	// SaluteSpeech specifies config to interact with SaluteSpeech API
 	SaluteSpeech *SaluteSpeechConfig `yaml:"salute_speech"`
@@ -58,7 +56,7 @@ func DefaultServerConfig() ServerConfig {
 		DBDataSourceName: new(string),
 		ShutdownTimeout:  new(time.Duration),
 		ConfigFile:       new(string),
-		ProcessorLimit:   new(int64),
+		ProcessorLimit:   new(int),
 		SaluteSpeech:     new(SaluteSpeechConfig),
 		GigaChat:         new(GigaChatConfig),
 	}
@@ -72,10 +70,13 @@ func DefaultServerConfig() ServerConfig {
 }
 
 // Parse parses config from different sources
-func (s *ServerConfig) Parse() {
+func (s *ServerConfig) Parse() error {
 	s.getConfigFileParam()
 	s.overrideFromLocalFileIfExists()
-	s.parseEnvVariables()
+	if err := s.parseEnvVariables(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *ServerConfig) getConfigFileParam() {
@@ -87,11 +88,12 @@ func (s *ServerConfig) getConfigFileParam() {
 	}
 }
 
-func (s *ServerConfig) parseEnvVariables() {
+func (s *ServerConfig) parseEnvVariables() error {
 	err := env.Parse(s)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+	return nil
 }
 
 // overrideFromLocalFileIfExists overrides parameters which were not set by flags or env variables
@@ -100,21 +102,8 @@ func (s *ServerConfig) overrideFromLocalFileIfExists() {
 		slog.Info("config file not specified")
 		return
 	}
-	var dirPath string
-	lastSlash := strings.LastIndex(*s.ConfigFile, "/")
-	if lastSlash >= 0 {
-		dirPath = (*s.ConfigFile)[:lastSlash]
-	}
 
-	root, err := os.OpenRoot(dirPath)
-	if err != nil {
-		slog.Error("open config file directory error", "error", err)
-		return
-	}
-	defer root.Close()
-
-	fileName := (*s.ConfigFile)[lastSlash+1:]
-	file, err := root.Open(fileName)
+	file, err := os.Open(*s.ConfigFile)
 	if err != nil {
 		slog.Error("open config file error", "error", err)
 		return

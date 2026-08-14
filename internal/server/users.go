@@ -41,7 +41,7 @@ func (h *UsersHandler) HandleStart(res http.ResponseWriter, req *http.Request) {
 	}
 
 	var user model.User
-	if err := json.Unmarshal(bodyBuf, &user); err != nil {
+	if err = json.Unmarshal(bodyBuf, &user); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
 		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))

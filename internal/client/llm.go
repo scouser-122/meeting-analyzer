@@ -1,11 +1,13 @@
 package client
 
 import (
+	"context"
+
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 type LLMClient interface {
-	SummarizeTranscription(meeting *model.Meeting, text string) (string, error)
-	ExtractIntent(text string) (*models.QueryIntent, error)
+	SummarizeTranscription(ctx context.Context, meeting *model.Meeting, transcriptionText string) (string, error)
+	ExtractIntent(ctx context.Context, text string) (*models.QueryIntent, error)
 }

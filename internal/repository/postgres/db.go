@@ -74,7 +74,7 @@ func (db *PostgresDatabase) Open() error {
 		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	if err := db.pool.Ping(context.Background()); err != nil {
+	if err = db.pool.Ping(context.Background()); err != nil {
 		db.pool.Close()
 		db.pool = nil
 		return fmt.Errorf("failed to ping database: %w", err)

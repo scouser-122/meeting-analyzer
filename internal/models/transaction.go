@@ -12,7 +12,7 @@ type GenericTransaction interface {
 }
 
 // DbTransactionKey key value to store DB transaction in context
-const DbTransactionKey string = "dbTransaction"
+const DbTransactionKey ContextKey = "dbTransaction"
 
 // GetTransactionFromContext takes transaction from context
 func GetTransactionFromContext(ctx context.Context) GenericTransaction {

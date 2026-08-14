@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
@@ -27,7 +27,6 @@ func NewPostgresUserRepository(db *PostgresDatabase) *PostgresUserRepository {
 		var user model.User
 		err := row.Scan(
 			&user.ID,
-			&user.ExternalID,
 			&user.CreatedAt,
 		)
 		if err != nil {
@@ -41,22 +40,38 @@ func NewPostgresUserRepository(db *PostgresDatabase) *PostgresUserRepository {
 	}
 }
 
+// NewPostgresUserRepositoryFromPool creates Postgres users storage from pool interface (for testing with pgxmock)
+func NewPostgresUserRepositoryFromPool(pool QueryExecutor) *PostgresUserRepository {
+	mapper := func(row pgx.Row) (*model.User, error) {
+		var user model.User
+		err := row.Scan(
+			&user.ID,
+			&user.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return &user, err
+	}
+	return &PostgresUserRepository{
+		Database: &PostgresDatabase{},
+		repo:     NewGenericRepositoryFromExecutor(pool, "users", "id", mapper),
+	}
+}
+
 // Create creates new user,
 // returns error if user with specified login already exists or process failed
 func (s *PostgresUserRepository) Create(ctx context.Context, id string) (*model.User, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
 	user, err := s.repo.Create(ctx, "id,created_at", id, time.Now())
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == pgerrcode.UniqueViolation {
 				err = &models.CustomErr{Message: "user id busy", HTTPStatus: http.StatusConflict}
-				logger.Error(err.Error())
-				return nil, err
+				return nil, errors.WithStack(err)
 			}
 		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return user, nil
 }
@@ -70,21 +85,7 @@ func (s *PostgresUserRepository) GetByID(ctx context.Context, id string) (*model
 			logger.Error("user not found", "id", id)
 			return nil, fmt.Errorf("user not found")
 		}
-		logger.Error(err.Error())
-		return nil, err
-	}
-	return user, nil
-}
-
-func (s *PostgresUserRepository) GetByExternalID(ctx context.Context, externalID string) (*model.User, error) {
-	logger := logger.GetSlogLoggerFromContext(ctx)
-	user, err := s.repo.GetByParameter(ctx, "external_id", externalID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("user not found")
-		}
-		logger.Error(err.Error())
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	return user, nil
 }
