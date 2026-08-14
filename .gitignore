@@ -8,3 +8,4 @@ cmd/tui/data/sample-0.mp3
 cmd/tui/tui_client
 cmd/server/server
 .TODO
+cmd/telegram-bot/config.yaml

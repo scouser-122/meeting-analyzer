@@ -56,6 +56,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/pkg/errors v0.9.1
 	golang.org/x/text v0.40.0 // indirect
+	gopkg.in/telebot.v4 v4.0.0-beta.10
 	gopkg.in/yaml.v3 v3.0.1
 	honnef.co/go/tools v0.7.0
 )
