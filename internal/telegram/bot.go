@@ -54,8 +54,8 @@ func (b *TelegramBot) Init() error {
 }
 
 func (b *TelegramBot) Run() {
-	b.bot.Start()
 	slog.Info("telegram bot started")
+	b.bot.Start()
 }
 
 func (b *TelegramBot) handleStart(c tele.Context) error {

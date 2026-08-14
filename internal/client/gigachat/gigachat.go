@@ -47,7 +47,7 @@ func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *mo
 			},
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи:\n%s", transcriptionText),
+				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи (не более 3 предложений):\n%s", transcriptionText),
 			},
 		},
 	}
@@ -86,6 +86,9 @@ func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *mo
 }
 
 func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*models.QueryIntent, error) {
+	logger := logger.GetSlogLoggerFromContext(ctx)
+	logger.Info("GigaChat client: start extract intent")
+
 	client := resty.New()
 
 	token, err := c.getToken(ctx)
@@ -150,6 +153,7 @@ func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*model
 	if err := json.Unmarshal([]byte(answer), &intent); err != nil {
 		return nil, fmt.Errorf("parse intent json: %w", err)
 	}
+	logger.Info("GigaChat client: intent extracted - %q", intent)
 	return &intent, nil
 }
 
