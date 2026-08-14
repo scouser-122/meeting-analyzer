@@ -13,7 +13,7 @@ import (
 )
 
 // Initialize creates and sets default slog logger with specified logging level
-func Initialize(level string, fileHandler *rotoslog.Handler) {
+func Initialize(level string, env string, fileHandler *rotoslog.Handler) {
 	logLevel := slog.LevelInfo
 	switch level {
 	case "debug":
@@ -24,9 +24,16 @@ func Initialize(level string, fileHandler *rotoslog.Handler) {
 		logLevel = slog.LevelWarn
 	}
 
-	terminalHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})
+	var terminalHandler slog.Handler
+	if env == "dev" {
+		terminalHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: logLevel,
+		})
+	} else {
+		terminalHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: logLevel,
+		})
+	}
 
 	if fileHandler != nil {
 		multiHandler := slogmulti.New(

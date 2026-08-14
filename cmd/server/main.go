@@ -38,7 +38,7 @@ func main() {
 		}
 		defer fileHandler.Close()
 	}
-	logger.Initialize(*serverConfig.LogLevel, fileHandler)
+	logger.Initialize(*serverConfig.LogLevel, *serverConfig.Environment, fileHandler)
 
 	database := postgres.NewPostgresDB(serverConfig)
 	if err := database.Open(); err != nil {
