@@ -153,7 +153,7 @@ func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*model
 	if err := json.Unmarshal([]byte(answer), &intent); err != nil {
 		return nil, fmt.Errorf("parse intent json: %w", err)
 	}
-	logger.Info("GigaChat client: intent extracted - %q", intent)
+	logger.Info("GigaChat client: intent extracted", "intent", intent)
 	return &intent, nil
 }
 
