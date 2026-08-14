@@ -47,7 +47,7 @@ func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *mo
 			},
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи (не более 3 предложений):\n%s", transcriptionText),
+				Content: fmt.Sprintf("Напиши краткую выжимку по следующей транскрипции встречи (не больше двух предложений):\n%s", transcriptionText),
 			},
 		},
 	}

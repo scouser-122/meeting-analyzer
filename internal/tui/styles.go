@@ -36,6 +36,7 @@ var (
 	resultStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#7C3AED")).
+			Width(120).
 			Padding(1).MarginTop(1)
 
 	meetingStatusStyle = map[string]lipgloss.Style{
