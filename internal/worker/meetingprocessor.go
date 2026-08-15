@@ -15,6 +15,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/service"
 )
 
+// MeetingProcessor processes uploaded meeting audio files asynchronously.
 type MeetingProcessor struct {
 	meetingService       *service.MeetingsService
 	tasksService         *service.TasksService
@@ -31,6 +32,7 @@ type MeetingProcessor struct {
 	wg                   sync.WaitGroup
 }
 
+// NewMeetingProcessor creates a new MeetingProcessor with a default channel buffer.
 func NewMeetingProcessor(
 	meetingService *service.MeetingsService,
 	tasksService *service.TasksService,
@@ -84,6 +86,7 @@ func NewMeetingProcessorWithBuffer(
 	}
 }
 
+// Run starts the worker pool that processes meetings.
 func (m *MeetingProcessor) Run() {
 	for i := 0; i < m.maxWorkers; i++ {
 		m.wg.Add(1)
@@ -91,6 +94,7 @@ func (m *MeetingProcessor) Run() {
 	}
 }
 
+// Shutdown signals the processor to stop and waits for workers to finish.
 func (m *MeetingProcessor) Shutdown() {
 	slog.Info("meeting processor shutdown signal received. stopping worker...")
 	close(m.meetingsCh)
@@ -98,6 +102,7 @@ func (m *MeetingProcessor) Shutdown() {
 	m.cancel()
 }
 
+// ProcessMeeting submits a meeting to the processing queue. Returns false if the queue is full.
 func (m *MeetingProcessor) ProcessMeeting(meeting *model.Meeting) bool {
 	select {
 	case m.meetingsCh <- meeting:

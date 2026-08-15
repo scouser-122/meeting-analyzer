@@ -16,12 +16,14 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
+// GigaChatClient is an LLM client implementation backed by the GigaChat API.
 type GigaChatClient struct {
 	config *config.GigaChatConfig
 	token  GigaAccessToken
 	client *resty.Client
 }
 
+// NewGigaChatClient creates a new GigaChat API client from server configuration.
 func NewGigaChatClient(
 	serverConfig *config.ServerConfig,
 ) *GigaChatClient {
@@ -47,6 +49,7 @@ func createRestyClient() *resty.Client {
 	return client
 }
 
+// SummarizeTranscription generates a short summary of the provided transcription via GigaChat.
 func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *model.Meeting, transcriptionText string) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("GigaChat client: start summarizing transcription")
@@ -102,6 +105,7 @@ func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *mo
 	return answer, nil
 }
 
+// ExtractIntent determines whether the text is a meeting-related query and extracts keywords/topic.
 func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*models.QueryIntent, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("GigaChat client: start extract intent")

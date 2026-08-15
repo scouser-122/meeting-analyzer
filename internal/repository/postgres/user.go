@@ -59,8 +59,7 @@ func NewPostgresUserRepositoryFromPool(pool QueryExecutor) *PostgresUserReposito
 	}
 }
 
-// Create creates new user,
-// returns error if user with specified login already exists or process failed
+// Create creates a new user with the specified identifier.
 func (s *PostgresUserRepository) Create(ctx context.Context, id string) (*model.User, error) {
 	user, err := s.repo.Create(ctx, "id,created_at", id, time.Now())
 	if err != nil {
@@ -76,7 +75,7 @@ func (s *PostgresUserRepository) Create(ctx context.Context, id string) (*model.
 	return user, nil
 }
 
-// Get obtains user from storage by ID
+// GetByID returns a user by identifier.
 func (s *PostgresUserRepository) GetByID(ctx context.Context, id string) (*model.User, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	user, err := s.repo.GetByID(ctx, id)

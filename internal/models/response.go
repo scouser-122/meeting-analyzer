@@ -34,6 +34,7 @@ func NewErrorResponseBuffer(message string) []byte {
 	return buf.Bytes()
 }
 
+// WriteResponseError writes a JSON error response using the provided CustomErr.
 func WriteResponseError(err *CustomErr, res http.ResponseWriter) {
 	res.Header().Set("Content-Type", "application/json")
 	if err.HTTPStatus != 0 {
@@ -65,6 +66,7 @@ func NewSuccessResponseBufferWithData(message string, data any) []byte {
 	return buf.Bytes()
 }
 
+// MeetingResponseData represents a meeting item returned by the API.
 type MeetingResponseData struct {
 	ID                  string    `json:"id"`
 	Name                *string   `json:"name"`
@@ -75,16 +77,19 @@ type MeetingResponseData struct {
 	ProcessErrorMessage *string   `json:"process_error_message,omitempty"`
 }
 
+// LoadResponse represents the API response after uploading a meeting audio file.
 type LoadResponse struct {
 	Status  string        `json:"status"`
 	Message string        `json:"message"`
 	Data    model.Meeting `json:"data"`
 }
 
+// TranscriptionResponseData represents the API response containing transcription text.
 type TranscriptionResponseData struct {
 	Text string `json:"text"`
 }
 
+// ChatResponse represents the API response from the chat assistant.
 type ChatResponse struct {
 	Answer string `json:"answer"`
 }

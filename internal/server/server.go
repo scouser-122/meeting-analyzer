@@ -23,6 +23,7 @@ func NewServer(config *config.ServerConfig) *Server {
 	}
 }
 
+// Init registers handlers and prepares the HTTP server.
 func (s *Server) Init(handlers []Handler) error {
 	r := http.NewServeMux()
 	err := s.addHandlersForRouter(r, &handlers, s.config)

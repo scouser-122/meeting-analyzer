@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// View renders the current TUI screen.
 func (m Model) View() string {
 	switch m.Screen {
 	case ScreenMainMenu:

@@ -16,12 +16,14 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
 )
 
+// SaluteSpeechClient is an audio processor implementation backed by the SaluteSpeech API.
 type SaluteSpeechClient struct {
 	config *config.SaluteSpeechConfig
 	client *resty.Client
 	token  SaluteAuthToken
 }
 
+// NewSaluteSpeechClient creates a new SaluteSpeech API client from server configuration.
 func NewSaluteSpeechClient(
 	serverConfig *config.ServerConfig,
 ) *SaluteSpeechClient {
@@ -31,6 +33,7 @@ func NewSaluteSpeechClient(
 	}
 }
 
+// TranscribeAudio uploads the meeting audio to SaluteSpeech and returns the recognized text.
 func (s *SaluteSpeechClient) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("salute speech client: start transribing audio")

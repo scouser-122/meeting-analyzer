@@ -13,6 +13,7 @@ type apiResultMsg struct {
 	err    error
 }
 
+// Update handles incoming messages and updates the TUI model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

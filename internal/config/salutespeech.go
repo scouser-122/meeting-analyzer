@@ -1,5 +1,6 @@
 package config
 
+// SaluteSpeechConfig holds configuration parameters for the SaluteSpeech API client.
 type SaluteSpeechConfig struct {
 	// ServerAddress specifies address to interact with SaluteSpeech API
 	ServerAddress string `yaml:"server_address"`

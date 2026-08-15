@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Session stores the persisted TUI user session.
 type Session struct {
 	UserID string `json:"user_id"`
 }
@@ -34,6 +35,7 @@ func sessionPath() (string, error) {
 	return filepath.Join(dir, "session.json"), nil
 }
 
+// LoadSession reads the saved session from disk, if it exists.
 func LoadSession() (*Session, error) {
 	path, err := sessionPath()
 	if err != nil {
@@ -60,6 +62,7 @@ func LoadSession() (*Session, error) {
 	return &sess, nil
 }
 
+// SaveSession writes the user session to disk.
 func SaveSession(userID string) error {
 	path, err := sessionPath()
 	if err != nil {
@@ -78,6 +81,7 @@ func SaveSession(userID string) error {
 	return nil
 }
 
+// NewUserID generates a new random UUID for a TUI user.
 func NewUserID() string {
 	return uuid.New().String()
 }

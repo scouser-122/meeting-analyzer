@@ -35,6 +35,7 @@ func (s *UsersService) Register(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetByID returns a user by identifier.
 func (s *UsersService) GetByID(ctx context.Context, id string) (*model.User, error) {
 	return s.usersRepo.GetByID(ctx, id)
 }

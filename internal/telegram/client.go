@@ -12,11 +12,13 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
+// TelegramClient is an HTTP client for the backend API used by the Telegram bot.
 type TelegramClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
+// NewClient creates a TelegramClient with the given backend base URL.
 func NewClient(baseURL string) *TelegramClient {
 	return &TelegramClient{
 		BaseURL: baseURL,
@@ -26,6 +28,7 @@ func NewClient(baseURL string) *TelegramClient {
 	}
 }
 
+// Start registers a new user via the backend API.
 func (c *TelegramClient) Start(userID string) (*models.CommonResponse, error) {
 	body := map[string]string{"id": userID}
 	resp, err := c.doJSON("POST", "/api/users/start", body)
@@ -47,6 +50,7 @@ func (c *TelegramClient) Start(userID string) (*models.CommonResponse, error) {
 	return &result, nil
 }
 
+// UploadMeeting sends an audio file and metadata to the backend for processing.
 func (c *TelegramClient) UploadMeeting(userID, name, filename string, file io.Reader) (*models.LoadResponse, error) {
 	metadata, err := json.Marshal(map[string]string{
 		"user_id": userID,
@@ -102,6 +106,7 @@ func (c *TelegramClient) UploadMeeting(userID, name, filename string, file io.Re
 	return &result, nil
 }
 
+// List returns the list of meetings for the specified user.
 func (c *TelegramClient) List(userID string) ([]models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/list?user_id=%s", c.BaseURL, userID)
 	resp, err := c.HTTPClient.Get(url)
@@ -123,6 +128,7 @@ func (c *TelegramClient) List(userID string) ([]models.MeetingResponseData, erro
 	return meetings, nil
 }
 
+// Status returns the processing status of the specified meeting.
 func (c *TelegramClient) Status(userID, meetingID string) (*models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/status?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
@@ -144,6 +150,7 @@ func (c *TelegramClient) Status(userID, meetingID string) (*models.MeetingRespon
 	return &meeting, nil
 }
 
+// Transcription returns the transcription text for the specified meeting.
 func (c *TelegramClient) Transcription(userID, meetingID string) (*models.TranscriptionResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/transcription?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
@@ -165,6 +172,7 @@ func (c *TelegramClient) Transcription(userID, meetingID string) (*models.Transc
 	return &result, nil
 }
 
+// Find searches meetings by keywords through the backend API.
 func (c *TelegramClient) Find(userID, keywords string) ([]models.MeetingResponseData, error) {
 	body := map[string]string{
 		"user_id":   userID,
@@ -189,6 +197,7 @@ func (c *TelegramClient) Find(userID, keywords string) ([]models.MeetingResponse
 	return meetings, nil
 }
 
+// Chat sends a question to the backend chat assistant and returns the answer.
 func (c *TelegramClient) Chat(userID, question string) (*models.ChatResponse, error) {
 	body := map[string]string{
 		"user_id":  userID,

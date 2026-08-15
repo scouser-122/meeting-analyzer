@@ -29,7 +29,7 @@ type MeetingsService struct {
 	uploadDir       string
 }
 
-// MeetingsService creates new MeetingsService instance
+// NewMeetingsService creates new MeetingsService instance.
 func NewMeetingsService(
 	meetingsRepo repository.MeetingRepository,
 	repositoryUtils repository.RepositoryUtils,
@@ -53,7 +53,7 @@ var allowedExts = map[string]bool{
 	".ogg": true,
 }
 
-// CreateFromAudioFile saves audio file from request to server FS and created new meeting record in DB
+// CreateFromAudioFile saves the uploaded audio file and creates a meeting record with a processing task.
 func (s *MeetingsService) CreateFromAudioFile(
 	ctx context.Context,
 	meeting *model.Meeting,
@@ -188,6 +188,7 @@ func newFileID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// DeleteMeetingAudioFile removes the meeting audio file from disk and clears the file path in storage.
 func (s *MeetingsService) DeleteMeetingAudioFile(
 	ctx context.Context,
 	meeting *model.Meeting,
@@ -204,14 +205,17 @@ func (s *MeetingsService) DeleteMeetingAudioFile(
 	return nil
 }
 
+// GetByID returns a meeting by identifier.
 func (s *MeetingsService) GetByID(ctx context.Context, meetingID string) (*model.Meeting, error) {
 	return s.meetingsRepo.GetByID(ctx, meetingID)
 }
 
+// GetAllByUserID returns all meetings owned by the user.
 func (s *MeetingsService) GetAllByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
 	return s.meetingsRepo.GetByUserID(ctx, userID)
 }
 
+// FindByNameContains searches user meetings by a substring of the meeting name.
 func (s *MeetingsService) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
 	return s.meetingsRepo.FindByNameContains(ctx, userID, namePart)
 }

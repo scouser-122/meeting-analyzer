@@ -11,18 +11,21 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+// TelegramBot wraps a Telegram bot that proxies user commands to the backend API.
 type TelegramBot struct {
 	config *TelegramBotConfig
 	client *TelegramClient
 	bot    *tele.Bot
 }
 
+// NewTelegramBot creates a new Telegram bot instance without initializing the underlying client.
 func NewTelegramBot(config *TelegramBotConfig) *TelegramBot {
 	return &TelegramBot{
 		config: config,
 	}
 }
 
+// Init creates the backend client and registers Telegram handlers.
 func (b *TelegramBot) Init() error {
 	b.client = NewClient(b.config.Backend.BaseURL)
 
@@ -53,6 +56,7 @@ func (b *TelegramBot) Init() error {
 	return nil
 }
 
+// Run starts the bot and blocks until it is stopped.
 func (b *TelegramBot) Run() {
 	slog.Info("telegram bot started")
 	b.bot.Start()
