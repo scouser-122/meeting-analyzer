@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
@@ -118,6 +119,7 @@ func (ts *testServer) client() *GigaChatClient {
 			AuthKey:         "test-auth-key",
 			Model:           "test-model",
 		},
+		client: resty.New(),
 	}
 }
 

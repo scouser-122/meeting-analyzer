@@ -25,6 +25,7 @@ type MeetingProcessor struct {
 	llmClient            client.LLMClient
 	meetingsCh           chan *model.Meeting
 	maxWorkers           int
+	processTimeout       time.Duration
 	ctx                  context.Context
 	cancel               context.CancelFunc
 	wg                   sync.WaitGroup
@@ -77,6 +78,7 @@ func NewMeetingProcessorWithBuffer(
 		llmClient:            summarizeProcessor,
 		meetingsCh:           make(chan *model.Meeting, bufferSize),
 		maxWorkers:           *serverConfig.ProcessorLimit,
+		processTimeout:       time.Duration(*serverConfig.ProcessorTimeout) * time.Second,
 		ctx:                  ctx,
 		cancel:               cancel,
 	}
@@ -129,6 +131,9 @@ func (m *MeetingProcessor) processMeetingInWorker(workerID int, meeting *model.M
 		slog.String("meeting_name", *meeting.MeetingName),
 	)
 	ctx := context.WithValue(m.ctx, logger.LoggerKey, pLogger)
+	ctx, cancel := context.WithTimeout(ctx, m.processTimeout)
+	defer cancel()
+
 	pLogger.Info("start process meeting")
 
 	defer m.cleanUpAfterProcessing(ctx, meeting)
@@ -252,7 +257,7 @@ func (m *MeetingProcessor) markTaskFailed(ctx context.Context, taskID string, er
 }
 
 func (m *MeetingProcessor) cleanUpAfterProcessing(ctx context.Context, meeting *model.Meeting) {
-	err := m.meetingService.DeleteMeetingAudioFile(ctx, meeting)
+	err := m.meetingService.DeleteMeetingAudioFile(m.ctx, meeting)
 	if err != nil {
 		logger := logger.GetSlogLoggerFromContext(ctx)
 		logger.Error("can't delete meeting audio file", "err", err)

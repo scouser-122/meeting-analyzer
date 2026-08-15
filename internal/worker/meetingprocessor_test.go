@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -363,12 +364,14 @@ func newRaceTestState(t *testing.T) *fakeState {
 	t.Helper()
 
 	limit := 8
+	timeout := 30
 	uploadDir := t.TempDir()
 	maxUpload := int64(10 << 20)
 	serverConfig := &config.ServerConfig{
-		ProcessorLimit: &limit,
-		UploadFileDir:  &uploadDir,
-		MaxUploadSize:  &maxUpload,
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
 	}
 
 	meetings := newFakeMeetingRepository()
@@ -428,6 +431,178 @@ func seedMeetingAndTask(t *testing.T, state *fakeState, meeting *model.Meeting) 
 	state.meetings.put(meeting)
 	if _, err := state.tasks.Create(context.Background(), meeting.ID); err != nil {
 		t.Fatalf("seed task for meeting %s: %v", meeting.ID, err)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Моки для проверки таймаута.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type slowAudioProcessor struct {
+	delay    time.Duration
+	blockCtx bool
+}
+
+func (s slowAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	timer := time.NewTimer(s.delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-timer.C:
+		return "transcription for " + meeting.ID, nil
+	}
+}
+
+func newTimeoutTestState(t *testing.T, timeoutSec int, audio client.AudioProcessor) *fakeState {
+	t.Helper()
+
+	limit := 1
+	timeout := timeoutSec
+	uploadDir := t.TempDir()
+	maxUpload := int64(10 << 20)
+	serverConfig := &config.ServerConfig{
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
+	}
+
+	meetings := newFakeMeetingRepository()
+	tasks := newFakeTaskRepository()
+	transcriptions := newFakeTranscriptionRepository()
+	summaries := newFakeSummaryRepository()
+	users := newFakeUserRepository()
+	repoUtils := fakeRepoUtils{}
+
+	usersService := service.NewUsersService(users)
+	tasksService := service.NewTasksService(tasks, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, serverConfig)
+	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
+	summaryService := service.NewSummaryService(summaries, repoUtils)
+
+	processor := NewMeetingProcessorWithBuffer(
+		meetingsService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+		repoUtils,
+		audio,
+		fakeLLMClient{},
+		serverConfig,
+		128,
+	)
+
+	return &fakeState{
+		processor:      processor,
+		meetings:       meetings,
+		tasks:          tasks,
+		transcriptions: transcriptions,
+		summaries:      summaries,
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты таймаута processMeetingInWorker
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestProcessMeetingInWorker_Timeout(t *testing.T) {
+	type when struct {
+		audioDelay time.Duration
+		blockCtx   bool
+		timeoutSec int
+	}
+
+	type want struct {
+		status           model.TaskStatus
+		errContains      string
+		hasTranscription bool
+		hasSummary       bool
+	}
+
+	var testsList = []struct {
+		name string
+		when when
+		want want
+	}{
+		{
+			name: "audio processor exceeds timeout",
+			when: when{
+				audioDelay: 1500 * time.Millisecond,
+				blockCtx:   true,
+				timeoutSec: 1,
+			},
+			want: want{
+				status:           model.TaskStatusFailed,
+				errContains:      "context deadline exceeded",
+				hasTranscription: false,
+				hasSummary:       false,
+			},
+		},
+		{
+			name: "audio processor finishes before timeout",
+			when: when{
+				audioDelay: 50 * time.Millisecond,
+				blockCtx:   true,
+				timeoutSec: 1,
+			},
+			want: want{
+				status:           model.TaskStatusCompleted,
+				errContains:      "",
+				hasTranscription: true,
+				hasSummary:       true,
+			},
+		},
+	}
+
+	for _, test := range testsList {
+		t.Run(test.name, func(t *testing.T) {
+			audio := slowAudioProcessor{delay: test.when.audioDelay, blockCtx: test.when.blockCtx}
+			state := newTimeoutTestState(t, test.when.timeoutSec, audio)
+			dir := t.TempDir()
+
+			meeting := newTestMeeting(t, dir, 0)
+			seedMeetingAndTask(t, state, meeting)
+
+			state.processor.processMeetingInWorker(0, meeting)
+
+			status, ok := state.tasks.statusByMeeting(meeting.ID)
+			if !ok {
+				t.Fatalf("task for meeting %s not found", meeting.ID)
+			}
+			if status != test.want.status {
+				t.Errorf("status = %q, want %q", status, test.want.status)
+			}
+
+			_, hasTranscription := state.transcriptions.get(meeting.ID)
+			if hasTranscription != test.want.hasTranscription {
+				t.Errorf("hasTranscription = %v, want %v", hasTranscription, test.want.hasTranscription)
+			}
+
+			_, hasSummary := state.summaries.get(meeting.ID)
+			if hasSummary != test.want.hasSummary {
+				t.Errorf("hasSummary = %v, want %v", hasSummary, test.want.hasSummary)
+			}
+
+			if test.want.errContains != "" {
+				state.tasks.mu.Lock()
+				var task *model.Task
+				for _, tt := range state.tasks.byID {
+					if tt.MeetingID == meeting.ID {
+						task = tt
+						break
+					}
+				}
+				state.tasks.mu.Unlock()
+
+				if task == nil || task.ErrorMessage == nil {
+					t.Errorf("expected error message containing %q, got nil", test.want.errContains)
+				} else if !strings.Contains(*task.ErrorMessage, test.want.errContains) {
+					t.Errorf("error message = %q, want containing %q", *task.ErrorMessage, test.want.errContains)
+				}
+			}
+		})
 	}
 }
 

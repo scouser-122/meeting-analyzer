@@ -33,8 +33,11 @@ type ServerConfig struct {
 	// MaxUploadSize specifies max meeting audio file upload size
 	MaxUploadSize *int64 `env:"MAX_UPLOAD_SIZE" yaml:"max_upload_size"`
 
-	// MaxUploadSize specifies limit for simultaneous metting processing jobs
+	// ProcessorLimit specifies limit for simultaneous metting processing jobs
 	ProcessorLimit *int `env:"PROCESSOR_LIMIT" yaml:"processor_limit"`
+
+	// ProcessorTimeout specifies timeout for metting processing job (in seconds)
+	ProcessorTimeout *int `env:"PROCESSOR_TIMEOUT" yaml:"processor_timeout"`
 
 	// SaluteSpeech specifies config to interact with SaluteSpeech API
 	SaluteSpeech *SaluteSpeechConfig `yaml:"salute_speech"`
@@ -57,6 +60,7 @@ func DefaultServerConfig() ServerConfig {
 		ShutdownTimeout:  new(time.Duration),
 		ConfigFile:       new(string),
 		ProcessorLimit:   new(int),
+		ProcessorTimeout: new(int),
 		SaluteSpeech:     new(SaluteSpeechConfig),
 		GigaChat:         new(GigaChatConfig),
 	}
@@ -66,6 +70,7 @@ func DefaultServerConfig() ServerConfig {
 	*result.DBDataSourceName = "postgres://postgres:password@localhost:5432/mydb?sslmode=disable"
 	*result.ShutdownTimeout = 30 * time.Second
 	*result.ProcessorLimit = 5
+	*result.ProcessorTimeout = 30
 	return result
 }
 

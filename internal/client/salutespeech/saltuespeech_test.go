@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
@@ -210,6 +211,7 @@ func (ts *testServer) client(t *testing.T) *SaluteSpeechClient {
 			StatusPollingMaxAttempts: 3,
 			RecognizedFileDir:        t.TempDir(),
 		},
+		client: resty.New(),
 	}
 }
 
@@ -221,6 +223,7 @@ func (ts *testServer) clientWithTempDir(tempDir string) *SaluteSpeechClient {
 			StatusPollingMaxAttempts: 3,
 			RecognizedFileDir:        tempDir,
 		},
+		client: resty.New(),
 	}
 }
 

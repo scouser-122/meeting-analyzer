@@ -65,6 +65,8 @@ func newMeetingProcessorWithBuffer(
 	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
 	serverConfig.ProcessorLimit = new(int)
 	*serverConfig.ProcessorLimit = 5
+	serverConfig.ProcessorTimeout = new(int)
+	*serverConfig.ProcessorTimeout = 30
 
 	db := &postgres.PostgresDatabase{}
 	repoUtils := postgres.NewPostgresRepositoryUtils(db)
@@ -143,6 +145,8 @@ func newTestMeetingsHandler(
 	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
 	serverConfig.ProcessorLimit = new(int)
 	*serverConfig.ProcessorLimit = 5
+	serverConfig.ProcessorTimeout = new(int)
+	*serverConfig.ProcessorTimeout = 30
 
 	// repoUtils должен использовать тот же mockDB, чтобы транзакции работали через pgxmock.
 	// PostgresDatabase.pool — неэкспортированное поле, поэтому используем unsafe.Pointer.

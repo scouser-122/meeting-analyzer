@@ -101,7 +101,7 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	}
 
 	if !h.meetingProcessor.ProcessMeeting(meeting) {
-		logger.Error("processing channel full, task rejected", "err", err)
+		logger.Error("processing channel full, task rejected")
 		res.WriteHeader(http.StatusTooManyRequests)
 		res.Write(models.NewErrorResponseBuffer("can't upload meeting. try again later"))
 		return

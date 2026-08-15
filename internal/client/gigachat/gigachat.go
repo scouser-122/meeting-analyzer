@@ -19,6 +19,7 @@ import (
 type GigaChatClient struct {
 	config *config.GigaChatConfig
 	token  GigaAccessToken
+	client *resty.Client
 }
 
 func NewGigaChatClient(
@@ -26,7 +27,24 @@ func NewGigaChatClient(
 ) *GigaChatClient {
 	return &GigaChatClient{
 		config: serverConfig.GigaChat,
+		client: createRestyClient(),
 	}
+}
+
+func createRestyClient() *resty.Client {
+	client := resty.New()
+	client.SetRetryCount(3).
+		SetRetryWaitTime(1 * time.Second).
+		SetRetryMaxWaitTime(2 * time.Second)
+	client.AddRetryCondition(
+		func(r *resty.Response, err error) bool {
+			return err != nil ||
+				r.StatusCode() == http.StatusRequestTimeout ||
+				r.StatusCode() == http.StatusTooManyRequests ||
+				r.StatusCode() == http.StatusInternalServerError
+		},
+	)
+	return client
 }
 
 func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *model.Meeting, transcriptionText string) (string, error) {
@@ -54,8 +72,7 @@ func (c *GigaChatClient) SummarizeTranscription(ctx context.Context, meeting *mo
 
 	var response GigaChatCompletionsResponse
 	requestID := uuid.New().String()
-	client := resty.New()
-	resp, err := client.R().
+	resp, err := c.client.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("X-Request-ID", requestID).
@@ -89,8 +106,6 @@ func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*model
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("GigaChat client: start extract intent")
 
-	client := resty.New()
-
 	token, err := c.getToken(ctx)
 	if err != nil {
 		return nil, err
@@ -123,7 +138,7 @@ func (c *GigaChatClient) ExtractIntent(ctx context.Context, text string) (*model
 
 	var response GigaChatCompletionsResponse
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := c.client.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("X-Request-ID", requestID).
@@ -162,11 +177,10 @@ func (c *GigaChatClient) getToken(ctx context.Context) (string, error) {
 		return c.token.Token, nil
 	}
 
-	client := resty.New()
 	url := fmt.Sprintf("%s/api/v2/oauth", c.config.GetTokenAddress)
 
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := c.client.R().
 		SetContext(ctx).
 		SetHeader("RqUID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Basic %s", c.config.AuthKey)).
