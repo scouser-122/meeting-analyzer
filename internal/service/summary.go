@@ -45,3 +45,8 @@ func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*str
 func (s *SummaryService) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
 	return s.summaryRepo.FindByTextContains(ctx, userID, textPart)
 }
+
+// DeleteByMeetingID removes the summary associated with the specified meeting.
+func (t *SummaryService) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return t.summaryRepo.DeleteByMeetingID(ctx, meetingID)
+}

@@ -242,6 +242,10 @@ func (f *fakeTranscriptionRepository) FindByKeyWords(ctx context.Context, userID
 	return nil, nil
 }
 
+func (f *fakeTranscriptionRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return nil
+}
+
 func (f *fakeTranscriptionRepository) get(meetingID string) (*model.Transcription, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -283,6 +287,10 @@ func (f *fakeSummaryRepository) GetByMeetingID(ctx context.Context, meetingID st
 
 func (f *fakeSummaryRepository) FindByTextContains(ctx context.Context, userID, textPart string) ([]*model.Summary, error) {
 	return nil, nil
+}
+
+func (f *fakeSummaryRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return nil
 }
 
 func (f *fakeSummaryRepository) get(meetingID string) (*model.Summary, bool) {
@@ -402,9 +410,9 @@ func newRaceTestState(t *testing.T) *fakeState {
 
 	usersService := service.NewUsersService(users)
 	tasksService := service.NewTasksService(tasks, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, serverConfig)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,
@@ -497,9 +505,9 @@ func newTimeoutTestState(t *testing.T, timeoutSec int, audio client.AudioProcess
 
 	usersService := service.NewUsersService(users)
 	tasksService := service.NewTasksService(tasks, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, serverConfig)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,

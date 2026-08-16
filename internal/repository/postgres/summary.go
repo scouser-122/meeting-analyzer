@@ -109,3 +109,21 @@ func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, user
 	)
 	return result, nil
 }
+
+// DeleteByMeetingID removes the summary associated with the specified meeting.
+func (r *PostgresSummaryRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM summary WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}

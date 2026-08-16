@@ -22,11 +22,13 @@ import (
 
 // MeetingsService service to work with meetings
 type MeetingsService struct {
-	meetingsRepo    repository.MeetingRepository
-	repositoryUtils repository.RepositoryUtils
-	usersService    *UsersService
-	tasksService    *TasksService
-	uploadDir       string
+	meetingsRepo         repository.MeetingRepository
+	repositoryUtils      repository.RepositoryUtils
+	usersService         *UsersService
+	tasksService         *TasksService
+	transcriptionService *TranscriptionService
+	summaryService       *SummaryService
+	uploadDir            string
 }
 
 // NewMeetingsService creates new MeetingsService instance.
@@ -35,6 +37,8 @@ func NewMeetingsService(
 	repositoryUtils repository.RepositoryUtils,
 	usersService *UsersService,
 	tasksService *TasksService,
+	transcriptionService *TranscriptionService,
+	summaryService *SummaryService,
 	serverConfig *config.ServerConfig,
 ) *MeetingsService {
 	service := MeetingsService{}
@@ -42,6 +46,8 @@ func NewMeetingsService(
 	service.repositoryUtils = repositoryUtils
 	service.usersService = usersService
 	service.tasksService = tasksService
+	service.transcriptionService = transcriptionService
+	service.summaryService = summaryService
 	service.uploadDir = *serverConfig.UploadFileDir
 	return &service
 }
@@ -241,6 +247,14 @@ func (s *MeetingsService) Delete(ctx context.Context, userID, meetingID string) 
 	}
 
 	if err := s.tasksService.DeleteByMeetingID(ctx, meetingID); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := s.transcriptionService.DeleteByMeetingID(ctx, meetingID); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := s.summaryService.DeleteByMeetingID(ctx, meetingID); err != nil {
 		return errors.WithStack(err)
 	}
 

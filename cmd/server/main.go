@@ -84,14 +84,14 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 	tasksRepo := postgres.NewPostgresTaskRepository(&database)
 	tasksService := service.NewTasksService(tasksRepo, repositoryUtils)
 
-	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
-	meetingsService := service.NewMeetingsService(meetingsRepo, repositoryUtils, usersService, tasksService, serverConfig)
-
 	transcriptionsRepo := postgres.NewPostgresTranscriptionRepository(&database)
 	transcriptionsService := service.NewTranscriptionService(transcriptionsRepo, repositoryUtils)
 
 	summaryRepo := postgres.NewPostgresSummaryRepository(&database)
 	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
+
+	meetingsRepo := postgres.NewPostgresMeetingRepository(&database)
+	meetingsService := service.NewMeetingsService(meetingsRepo, repositoryUtils, usersService, tasksService, transcriptionsService, summaryService, serverConfig)
 
 	var audioProcessor client.AudioProcessor
 	if *serverConfig.RecognizeService == "salute_speech" {

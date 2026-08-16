@@ -47,3 +47,8 @@ func (t *TranscriptionService) FindByTextContains(ctx context.Context, userID st
 func (t *TranscriptionService) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
 	return t.transcriptionsRepo.FindByKeyWords(ctx, userID, keywords, topic)
 }
+
+// DeleteByMeetingID removes the task associated with the specified meeting.
+func (t *TranscriptionService) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return t.transcriptionsRepo.DeleteByMeetingID(ctx, meetingID)
+}

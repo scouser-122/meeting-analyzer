@@ -167,3 +167,21 @@ func buildTsQuery(terms []string) string {
 	}
 	return strings.Join(quoted, " | ")
 }
+
+// DeleteByMeetingID removes the transcription associated with the specified meeting.
+func (r *PostgresTranscriptionRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM transcriptions WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}

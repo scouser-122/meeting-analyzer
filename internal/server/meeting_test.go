@@ -74,12 +74,18 @@ func newMeetingProcessorWithBuffer(
 	usersService := service.NewUsersService(userRepo)
 	meetingRepo := postgres.NewPostgresMeetingRepositoryFromPool(mockDB)
 	taskRepo := postgres.NewPostgresTaskRepositoryFromPool(mockDB)
+	transcriptionRepo := postgres.NewPostgresTranscriptionRepository(db)
 	tasksService := service.NewTasksService(taskRepo, repoUtils)
+	transcriptionService := service.NewTranscriptionService(transcriptionRepo, repoUtils)
+	summaryRepo := postgres.NewPostgresSummaryRepository(db)
+	summaryService := service.NewSummaryService(summaryRepo, repoUtils)
 	meetingsService := service.NewMeetingsService(
 		meetingRepo,
 		repoUtils,
 		usersService,
 		tasksService,
+		transcriptionService,
+		summaryService,
 		serverConfig,
 	)
 
@@ -173,6 +179,8 @@ func newTestMeetingsHandler(
 		repoUtils,
 		usersService,
 		tasksService,
+		transcriptionService,
+		summaryService,
 		serverConfig,
 	)
 
