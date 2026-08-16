@@ -265,6 +265,41 @@ func (h *MeetingsHandler) HandleTranscription(res http.ResponseWriter, req *http
 	res.Write(buf.Bytes())
 }
 
+// HandleDelete processes meeting delete request
+func (h *MeetingsHandler) HandleDelete(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodDelete {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	res.Header().Set("Content-Type", "application/json")
+
+	meetingID := req.URL.Query().Get("meeting_id")
+	if meetingID == "" {
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("missing 'meeting_id' parameter"))
+		return
+	}
+
+	userID := req.URL.Query().Get("user_id")
+	if userID == "" {
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("missing 'user_id' parameter"))
+		return
+	}
+
+	if err := h.meetingsService.Delete(req.Context(), userID, meetingID); err != nil {
+		logger.Error("can't delete meeting", "err", err)
+		handleServiceError(err, res)
+		return
+	}
+
+	logger.Info("meeting successfully deleted", slog.String("meetingID", meetingID))
+	res.WriteHeader(http.StatusOK)
+	res.Write(models.NewSuccessResponseBuffer("Встреча успешно удалена"))
+}
+
 // HandleFind processes meetings find request
 func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {

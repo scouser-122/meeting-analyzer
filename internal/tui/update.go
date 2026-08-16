@@ -129,7 +129,7 @@ func (m *Model) focusFirstInput() tea.Cmd {
 	switch m.Screen {
 	case ScreenLoad:
 		return m.FilePathInput.Focus()
-	case ScreenStatus, ScreenTranscription:
+	case ScreenStatus, ScreenTranscription, ScreenDelete:
 		return m.MeetingIDInput.Focus()
 	case ScreenFind:
 		return m.KeywordsInput.Focus()
@@ -196,6 +196,16 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		m.MeetingIDInput.Blur()
 		return m, m.fetchTranscription(meetingID)
 
+	case ScreenDelete:
+		meetingID := strings.TrimSpace(m.MeetingIDInput.Value())
+		if meetingID == "" {
+			m.Error = "Не указан ID встречи"
+			return m, nil
+		}
+		m.Loading = true
+		m.MeetingIDInput.Blur()
+		return m, m.fetchDelete(meetingID)
+
 	case ScreenFind:
 		keywords := strings.TrimSpace(m.KeywordsInput.Value())
 		if keywords == "" {
@@ -234,7 +244,7 @@ func (m Model) updateInputs(msg tea.Msg) (Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case ScreenStatus, ScreenTranscription:
+	case ScreenStatus, ScreenTranscription, ScreenDelete:
 		var cmd tea.Cmd
 		m.MeetingIDInput, cmd = m.MeetingIDInput.Update(msg)
 		cmds = append(cmds, cmd)
@@ -330,6 +340,20 @@ func (m Model) fetchTranscription(meetingID string) tea.Cmd {
 		return apiResultMsg{
 			result: resp.Text,
 			title:  "Transcription",
+		}
+	}
+}
+
+func (m Model) fetchDelete(meetingID string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.API.Delete(m.UserID, meetingID)
+		if err != nil {
+			return apiResultMsg{err: err}
+		}
+
+		return apiResultMsg{
+			result: fmt.Sprintf("Встреча %s успешно удалена.", meetingID),
+			title:  "Удаление встречи",
 		}
 	}
 }

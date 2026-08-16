@@ -55,3 +55,8 @@ func (t *TasksService) GetByMeetingID(ctx context.Context, meetingID string) (*m
 	}
 	return task, nil
 }
+
+// DeleteByMeetingID removes the task associated with the specified meeting.
+func (t *TasksService) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return t.tasksRepo.DeleteByMeetingID(ctx, meetingID)
+}

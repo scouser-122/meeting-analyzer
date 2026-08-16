@@ -129,6 +129,24 @@ func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, user
 	return result, nil
 }
 
+// Delete removes a meeting by its identifier.
+func (r *PostgresMeetingRepository) Delete(ctx context.Context, id string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM meetings WHERE id = $1",
+		id,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 // NewPostgresMeetingRepositoryFromPool creates Postgres meetings storage from pool interface (for testing with pgxmock)
 func NewPostgresMeetingRepositoryFromPool(pool QueryExecutor) *PostgresMeetingRepository {
 	mapper := func(row pgx.Row) (*model.Meeting, error) {

@@ -111,6 +111,24 @@ func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, st
 	return nil
 }
 
+// DeleteByMeetingID removes the task associated with the specified meeting.
+func (r *PostgresTaskRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM tasks WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 // NewPostgresTaskRepositoryFromPool creates Postgres tasks storage from pool interface (for testing with pgxmock)
 func NewPostgresTaskRepositoryFromPool(pool QueryExecutor) *PostgresTaskRepository {
 	mapper := func(row pgx.Row) (*model.Task, error) {

@@ -9,7 +9,9 @@ import (
 	"syscall"
 
 	"github.com/alchemy/rotoslog"
+	"github.com/scouser-122/meeting-analyzer/internal/client"
 	"github.com/scouser-122/meeting-analyzer/internal/client/gigachat"
+	"github.com/scouser-122/meeting-analyzer/internal/client/nexara"
 	"github.com/scouser-122/meeting-analyzer/internal/client/salutespeech"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
@@ -91,7 +93,13 @@ func initServicesAndGetHandlers(database postgres.PostgresDatabase, serverConfig
 	summaryRepo := postgres.NewPostgresSummaryRepository(&database)
 	summaryService := service.NewSummaryService(summaryRepo, repositoryUtils)
 
-	audioProcessor := salutespeech.NewSaluteSpeechClient(serverConfig)
+	var audioProcessor client.AudioProcessor
+	if *serverConfig.RecognizeService == "salute_speech" {
+		audioProcessor = salutespeech.NewSaluteSpeechClient(serverConfig)
+	} else {
+		audioProcessor = nexara.NewNexaraClient(serverConfig)
+	}
+
 	llmClient := gigachat.NewGigaChatClient(serverConfig)
 
 	meetingProcessor = worker.NewMeetingProcessor(

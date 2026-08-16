@@ -43,6 +43,7 @@ func (b *TelegramBot) Init() error {
 	bot.Handle("/list", b.handleList)
 	bot.Handle("/status", b.handleStatus)
 	bot.Handle("/transcription", b.handleTranscription)
+	bot.Handle("/delete", b.handleDelete)
 	bot.Handle("/find", b.handleFind)
 
 	bot.Handle(tele.OnAudio, b.handleMedia)
@@ -168,6 +169,18 @@ func (b *TelegramBot) handleTranscription(c tele.Context) error {
 		return c.Send(fmt.Sprintf("Ошибка получения транскрипции: %v", err))
 	}
 	return c.Send(resp.Text)
+}
+
+func (b *TelegramBot) handleDelete(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send("Укажите ID встречи: /delete <meeting_id>")
+	}
+	userID := UserIDFromTelegramID(c.Sender().ID)
+	if err := b.client.Delete(userID, args[0]); err != nil {
+		return c.Send(fmt.Sprintf("Ошибка удаления встречи: %v", err))
+	}
+	return c.Send("Встреча успешно удалена.")
 }
 
 func (b *TelegramBot) handleFind(c tele.Context) error {

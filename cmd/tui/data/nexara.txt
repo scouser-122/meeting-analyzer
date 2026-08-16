@@ -1,0 +1,6 @@
+
+
+curl https://api.nexara.ru/v1/audio/transcriptions \
+  -H "Authorization: Bearer nx-8yvoc3gFHlxHhR8UpEZwWtGE" \
+  -F "file=@sample-0.mp3" \
+  -F "model=whisper-1"

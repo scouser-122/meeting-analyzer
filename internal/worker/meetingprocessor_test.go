@@ -83,6 +83,13 @@ func (f *fakeMeetingRepository) Update(ctx context.Context, m *model.Meeting) er
 	return nil
 }
 
+func (f *fakeMeetingRepository) Delete(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.meetings, id)
+	return nil
+}
+
 func cloneMeeting(m *model.Meeting) *model.Meeting {
 	if m == nil {
 		return nil
@@ -156,6 +163,18 @@ func (f *fakeTaskRepository) UpdateStatus(ctx context.Context, id string, status
 	task.Status = status
 	task.ErrorMessage = cloneStringPtr(errorMessage)
 	task.UpdatedAt = time.Now()
+	return nil
+}
+
+func (f *fakeTaskRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for id, task := range f.byID {
+		if task.MeetingID == meetingID {
+			delete(f.byID, id)
+			return nil
+		}
+	}
 	return nil
 }
 

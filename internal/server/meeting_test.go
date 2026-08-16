@@ -1710,6 +1710,221 @@ var handleFindTests = []struct {
 	},
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты для HandleDelete
+// ─────────────────────────────────────────────────────────────────────────────
+
+type whenDelete struct {
+	method    string
+	meetingID string
+	userID    string
+	setupMock func(mock pgxmock.PgxPoolIface)
+}
+
+var handleDeleteTests = []struct {
+	name string
+	when whenDelete
+	want want
+}{
+	{
+		name: "Method Not Allowed - GET instead of DELETE",
+		when: whenDelete{
+			method:    http.MethodGet,
+			meetingID: "meeting-1",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusMethodNotAllowed,
+			body:   "",
+		},
+	},
+	{
+		name: "Bad Request - missing meeting_id",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'meeting_id' parameter"}`,
+		},
+	},
+	{
+		name: "Bad Request - missing user_id",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-1",
+			userID:    "",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'user_id' parameter"}`,
+		},
+	},
+	{
+		name: "Success - meeting deleted",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-1",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-1"
+				userID := "user-1"
+				name := "Weekly Standup"
+
+				// GetByID
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
+
+				// Delete task
+				mock.ExpectExec("DELETE FROM tasks").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+				// Delete meeting
+				mock.ExpectExec("DELETE FROM meetings").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+			},
+		},
+		want: want{
+			status: http.StatusOK,
+			body:   `{"status":"ok","message":"Встреча успешно удалена"}`,
+		},
+	},
+	{
+		name: "Not Found - meeting does not exist",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "nonexistent-meeting",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs("nonexistent-meeting").
+					WillReturnError(pgx.ErrNoRows)
+			},
+		},
+		want: want{
+			status: http.StatusNotFound,
+			body:   `{"status":"error","message":"meeting not found"}`,
+		},
+	},
+	{
+		name: "Forbidden - meeting belongs to another user",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-3",
+			userID:    "wrong-user",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-3"
+				name := "Planning"
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, "owner-user", &name, nil, nil, now, now))
+			},
+		},
+		want: want{
+			status: http.StatusForbidden,
+			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+		},
+	},
+	{
+		name: "Internal Server Error - DB error on GetByID",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-4",
+			userID:    "user-4",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs("meeting-4").
+					WillReturnError(fmt.Errorf("connection refused"))
+			},
+		},
+		want: want{
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","message":"unexpected error happen"}`,
+		},
+	},
+}
+
+func TestMeetingsHandler_HandleDelete(t *testing.T) {
+	for _, tt := range handleDeleteTests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDB, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mockDB.Close()
+
+			if tt.when.setupMock != nil {
+				tt.when.setupMock(mockDB)
+			}
+
+			uploadDir, err := os.MkdirTemp("", "meeting-delete-test-*")
+			if err != nil {
+				t.Fatalf("failed to create temp upload dir: %v", err)
+			}
+			defer os.RemoveAll(uploadDir)
+
+			handler := newTestMeetingsHandler(t, mockDB, uploadDir, newMeetingProcessorForTest(10))
+
+			url := "/api/meetings/delete"
+			params := []string{}
+			if tt.when.meetingID != "" {
+				params = append(params, "meeting_id="+tt.when.meetingID)
+			}
+			if tt.when.userID != "" {
+				params = append(params, "user_id="+tt.when.userID)
+			}
+			if len(params) > 0 {
+				url += "?" + strings.Join(params, "&")
+			}
+			req := httptest.NewRequest(tt.when.method, url, nil)
+			rr := httptest.NewRecorder()
+			handler.HandleDelete(rr, req)
+
+			if rr.Code != tt.want.status {
+				t.Errorf("expected status %d, got %d", tt.want.status, rr.Code)
+			}
+
+			if tt.want.body != "" {
+				responseBody := strings.TrimSpace(rr.Body.String())
+				if !strings.Contains(responseBody, tt.want.body) {
+					t.Errorf("expected body to contain %q, got %q", tt.want.body, responseBody)
+				}
+			}
+
+			if err := mockDB.ExpectationsWereMet(); err != nil {
+				t.Errorf("unfulfilled mock expectations: %v", err)
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты для HandleFind
+// ─────────────────────────────────────────────────────────────────────────────
+
 func TestMeetingsHandler_HandleFind(t *testing.T) {
 	for _, tt := range handleFindTests {
 		t.Run(tt.name, func(t *testing.T) {

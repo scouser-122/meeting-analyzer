@@ -45,6 +45,12 @@ type ServerConfig struct {
 	// GigaChat specifies config to interact with GigaChat API
 	GigaChat *GigaChatConfig `yaml:"giga_chat"`
 
+	// Nexara specifies config to interact with Nexara API
+	Nexara *NexaraConfig `yaml:"nexara"`
+
+	// RecognizeService specifies which service should be used to transcribe audio
+	RecognizeService *string `yaml:"recognize_service"`
+
 	// ConfigFile config filein yaml format path
 	ConfigFile *string
 }
@@ -63,6 +69,8 @@ func DefaultServerConfig() ServerConfig {
 		ProcessorTimeout: new(int),
 		SaluteSpeech:     new(SaluteSpeechConfig),
 		GigaChat:         new(GigaChatConfig),
+		Nexara:           new(NexaraConfig),
+		RecognizeService: new(string),
 	}
 	*result.RunAddr = "localhost:8080"
 	*result.LogLevel = "info"

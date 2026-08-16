@@ -219,3 +219,30 @@ func (s *MeetingsService) GetAllByUserID(ctx context.Context, userID string) ([]
 func (s *MeetingsService) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
 	return s.meetingsRepo.FindByNameContains(ctx, userID, namePart)
 }
+
+// Delete removes a meeting and its associated audio file if the user is the owner.
+func (s *MeetingsService) Delete(ctx context.Context, userID, meetingID string) error {
+	meeting, err := s.meetingsRepo.GetByID(ctx, meetingID)
+	if err != nil {
+		return err
+	}
+
+	if meeting.UserID != userID {
+		return &models.CustomErr{
+			Message:    "meeting data belongs to another user",
+			HTTPStatus: http.StatusForbidden,
+		}
+	}
+
+	if meeting.FilePath != nil && *meeting.FilePath != "" {
+		if err := os.RemoveAll(*meeting.FilePath); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
+	if err := s.tasksService.DeleteByMeetingID(ctx, meetingID); err != nil {
+		return errors.WithStack(err)
+	}
+
+	return s.meetingsRepo.Delete(ctx, meetingID)
+}

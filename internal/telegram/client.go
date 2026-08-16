@@ -172,6 +172,28 @@ func (c *TelegramClient) Transcription(userID, meetingID string) (*models.Transc
 	return &result, nil
 }
 
+// Delete removes the specified meeting through the backend API.
+func (c *TelegramClient) Delete(userID, meetingID string) error {
+	url := fmt.Sprintf("%s/api/meetings/delete?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp models.CommonResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("%s", errResp.Message)
+	}
+	return nil
+}
+
 // Find searches meetings by keywords through the backend API.
 func (c *TelegramClient) Find(userID, keywords string) ([]models.MeetingResponseData, error) {
 	body := map[string]string{

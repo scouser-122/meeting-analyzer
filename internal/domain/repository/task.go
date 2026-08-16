@@ -12,4 +12,5 @@ type TaskRepository interface {
 	GetByID(ctx context.Context, id string) (*model.Task, error)
 	GetByMeetingID(ctx context.Context, meetingID string) (*model.Task, error)
 	UpdateStatus(ctx context.Context, id string, status model.TaskStatus, errorMessage *string) error
+	DeleteByMeetingID(ctx context.Context, meetingID string) error
 }
