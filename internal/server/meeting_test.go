@@ -1804,6 +1804,16 @@ var handleDeleteTests = []struct {
 					WithArgs(meetingID).
 					WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
+				// Delete transcription
+				mock.ExpectExec("DELETE FROM transcriptions").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+				// Delete summary
+				mock.ExpectExec("DELETE FROM summary").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
 				// Delete meeting
 				mock.ExpectExec("DELETE FROM meetings").
 					WithArgs(meetingID).
