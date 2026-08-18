@@ -51,6 +51,13 @@ type ServerConfig struct {
 	// RecognizeService specifies which service should be used to transcribe audio
 	RecognizeService *string `yaml:"recognize_service"`
 
+	// FileStorageType specifies where uploaded audio files should be stored.
+	// Supported values: "filesystem", "minio".
+	FileStorageType *string `env:"FILE_STORAGE_TYPE" yaml:"file_storage_type"`
+
+	// Minio specifies config to interact with MinIO object storage
+	Minio *MinioConfig `yaml:"minio"`
+
 	// ConfigFile config filein yaml format path
 	ConfigFile *string
 }
@@ -71,6 +78,8 @@ func DefaultServerConfig() ServerConfig {
 		GigaChat:         new(GigaChatConfig),
 		Nexara:           new(NexaraConfig),
 		RecognizeService: new(string),
+		FileStorageType:  new(string),
+		Minio:            new(MinioConfig),
 	}
 	*result.RunAddr = "localhost:8080"
 	*result.LogLevel = "info"
@@ -79,6 +88,7 @@ func DefaultServerConfig() ServerConfig {
 	*result.ShutdownTimeout = 30 * time.Second
 	*result.ProcessorLimit = 5
 	*result.ProcessorTimeout = 30
+	*result.FileStorageType = "filesystem"
 	return result
 }
 

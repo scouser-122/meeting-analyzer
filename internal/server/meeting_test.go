@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
@@ -58,15 +58,7 @@ func newMeetingProcessorWithBuffer(
 ) *worker.MeetingProcessor {
 	t.Helper()
 
-	serverConfig := &config.ServerConfig{}
-	serverConfig.UploadFileDir = new(string)
-	*serverConfig.UploadFileDir = uploadDir
-	serverConfig.MaxUploadSize = new(int64)
-	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
-	serverConfig.ProcessorLimit = new(int)
-	*serverConfig.ProcessorLimit = 5
-	serverConfig.ProcessorTimeout = new(int)
-	*serverConfig.ProcessorTimeout = 30
+	serverConfig, fileStorage := newTestServerConfigAndStorage(uploadDir)
 
 	db := &postgres.PostgresDatabase{}
 	repoUtils := postgres.NewPostgresRepositoryUtils(db)
@@ -87,6 +79,7 @@ func newMeetingProcessorWithBuffer(
 		transcriptionService,
 		summaryService,
 		serverConfig,
+		fileStorage,
 	)
 
 	return worker.NewMeetingProcessorWithBuffer(
@@ -144,15 +137,7 @@ func newTestMeetingsHandler(
 ) *MeetingsHandler {
 	t.Helper()
 
-	serverConfig := &config.ServerConfig{}
-	serverConfig.UploadFileDir = new(string)
-	*serverConfig.UploadFileDir = uploadDir
-	serverConfig.MaxUploadSize = new(int64)
-	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
-	serverConfig.ProcessorLimit = new(int)
-	*serverConfig.ProcessorLimit = 5
-	serverConfig.ProcessorTimeout = new(int)
-	*serverConfig.ProcessorTimeout = 30
+	serverConfig, fileStorage := newTestServerConfigAndStorage(uploadDir)
 
 	// repoUtils должен использовать тот же mockDB, чтобы транзакции работали через pgxmock.
 	// PostgresDatabase.pool — неэкспортированное поле, поэтому используем unsafe.Pointer.
@@ -182,6 +167,7 @@ func newTestMeetingsHandler(
 		transcriptionService,
 		summaryService,
 		serverConfig,
+		fileStorage,
 	)
 
 	// Создаём реальный MeetingProcessor через конструктор с буфером по умолчанию.
@@ -211,6 +197,19 @@ func newTestMeetingsHandler(
 		mp,
 		serverConfig,
 	)
+}
+
+func newTestServerConfigAndStorage(uploadDir string) (*config.ServerConfig, *memory.Storage) {
+	serverConfig := &config.ServerConfig{}
+	serverConfig.UploadFileDir = new(string)
+	*serverConfig.UploadFileDir = uploadDir
+	serverConfig.MaxUploadSize = new(int64)
+	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
+	serverConfig.ProcessorLimit = new(int)
+	*serverConfig.ProcessorLimit = 5
+	serverConfig.ProcessorTimeout = new(int)
+	*serverConfig.ProcessorTimeout = 30
+	return serverConfig, memory.NewStorage()
 }
 
 // processorFactory описывает функцию, создающую процессор встречи для теста.
@@ -515,8 +514,8 @@ func TestMeetingsHandler_HandleLoad(t *testing.T) {
 	}
 }
 
-// Дополнительный тест: проверка, что загруженный файл действительно сохраняется на диск.
-func TestMeetingsHandler_HandleLoad_SavesFileToDisk(t *testing.T) {
+// Дополнительный тест: проверка, что загруженный файл действительно сохраняется в хранилище.
+func TestMeetingsHandler_HandleLoad_SavesFileToStorage(t *testing.T) {
 	mockDB, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("failed to create mock pool: %v", err)
@@ -585,21 +584,21 @@ func TestMeetingsHandler_HandleLoad_SavesFileToDisk(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rr.Code)
 	}
 
-	files, err := os.ReadDir(uploadDir)
-	if err != nil {
-		t.Fatalf("failed to read upload dir: %v", err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("expected 1 uploaded file, got %d", len(files))
+	memStorage, ok := handler.meetingsService.FileStorage().(*memory.Storage)
+	if !ok {
+		t.Fatalf("expected memory storage")
 	}
 
-	uploadedPath := filepath.Join(uploadDir, files[0].Name())
-	uploadedContent, err := os.ReadFile(uploadedPath)
-	if err != nil {
-		t.Fatalf("failed to read uploaded file: %v", err)
+	var found bool
+	for key, storedContent := range memStorage.GetAll() {
+		if bytes.Equal(storedContent, content) {
+			found = true
+			t.Logf("file saved to storage with key: %s", key)
+			break
+		}
 	}
-	if !bytes.Equal(uploadedContent, content) {
-		t.Errorf("uploaded file content mismatch")
+	if !found {
+		t.Errorf("uploaded file content not found in storage")
 	}
 
 	if err := mockDB.ExpectationsWereMet(); err != nil {

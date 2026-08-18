@@ -17,6 +17,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ func newTestChatHandler(
 		transcriptionService,
 		summaryService,
 		serverConfig,
+		memory.NewStorage(),
 	)
 
 	return NewChatHandler(llm, meetingsService, tasksService, transcriptionService, summaryService)

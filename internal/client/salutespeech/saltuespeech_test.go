@@ -17,6 +17,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/filesystem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -211,7 +212,8 @@ func (ts *testServer) client(t *testing.T) *SaluteSpeechClient {
 			StatusPollingMaxAttempts: 3,
 			RecognizedFileDir:        t.TempDir(),
 		},
-		client: resty.New(),
+		client:      resty.New(),
+		fileStorage: filesystem.NewStorage(""),
 	}
 }
 
@@ -223,7 +225,8 @@ func (ts *testServer) clientWithTempDir(tempDir string) *SaluteSpeechClient {
 			StatusPollingMaxAttempts: 3,
 			RecognizedFileDir:        tempDir,
 		},
-		client: resty.New(),
+		client:      resty.New(),
+		fileStorage: filesystem.NewStorage(""),
 	}
 }
 

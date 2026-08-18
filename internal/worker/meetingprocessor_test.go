@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -347,9 +350,18 @@ type fakeTransaction struct{}
 func (*fakeTransaction) Rollback(ctx context.Context) error { return nil }
 func (*fakeTransaction) Commit(ctx context.Context) error   { return nil }
 
-type fakeAudioProcessor struct{}
+type fakeAudioProcessor struct {
+	fileStorage storage.FileStorage
+}
 
-func (fakeAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+func (f fakeAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	if f.fileStorage != nil && meeting.FilePath != nil {
+		file, err := f.fileStorage.Open(ctx, *meeting.FilePath)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
+	}
 	return "transcription for " + meeting.ID, nil
 }
 
@@ -401,6 +413,7 @@ func newRaceTestState(t *testing.T) *fakeState {
 		UploadFileDir:    &uploadDir,
 		MaxUploadSize:    &maxUpload,
 	}
+	fileStorage := memory.NewStorage()
 
 	meetings := newFakeMeetingRepository()
 	tasks := newFakeTaskRepository()
@@ -413,7 +426,7 @@ func newRaceTestState(t *testing.T) *fakeState {
 	tasksService := service.NewTasksService(tasks, repoUtils)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,
@@ -421,7 +434,7 @@ func newRaceTestState(t *testing.T) *fakeState {
 		transcriptionService,
 		summaryService,
 		repoUtils,
-		fakeAudioProcessor{},
+		fakeAudioProcessor{fileStorage: fileStorage},
 		fakeLLMClient{},
 		serverConfig,
 		128,
@@ -450,6 +463,27 @@ func newTestMeeting(t *testing.T, dir string, idx int) *model.Meeting {
 		UserID:      "user-1",
 		MeetingName: &name,
 		FilePath:    &file,
+	}
+}
+
+func seedMeetingWithFileInStorage(t *testing.T, state *fakeState, meeting *model.Meeting) {
+	t.Helper()
+
+	seedMeetingAndTask(t, state, meeting)
+
+	content, err := os.ReadFile(*meeting.FilePath)
+	if err != nil {
+		t.Fatalf("read meeting file: %v", err)
+	}
+
+	if err := state.processor.meetingService.FileStorage().Save(
+		context.Background(),
+		*meeting.FilePath,
+		bytes.NewReader(content),
+		int64(len(content)),
+		"audio/mpeg",
+	); err != nil {
+		t.Fatalf("save meeting file to storage: %v", err)
 	}
 }
 
@@ -496,6 +530,7 @@ func newTimeoutTestState(t *testing.T, timeoutSec int, audio client.AudioProcess
 		UploadFileDir:    &uploadDir,
 		MaxUploadSize:    &maxUpload,
 	}
+	fileStorage := memory.NewStorage()
 
 	meetings := newFakeMeetingRepository()
 	tasks := newFakeTaskRepository()
@@ -508,7 +543,7 @@ func newTimeoutTestState(t *testing.T, timeoutSec int, audio client.AudioProcess
 	tasksService := service.NewTasksService(tasks, repoUtils)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,
@@ -650,7 +685,7 @@ func TestProcessMeetingInWorker_ConcurrentProcessingIsRaceFree(t *testing.T) {
 	meetings := make([]*model.Meeting, 0, meetingCount)
 	for i := 0; i < meetingCount; i++ {
 		meeting := newTestMeeting(t, dir, i)
-		seedMeetingAndTask(t, state, meeting)
+		seedMeetingWithFileInStorage(t, state, meeting)
 		meetings = append(meetings, meeting)
 	}
 
@@ -691,7 +726,7 @@ func TestMeetingProcessor_ConcurrentWorkersIsRaceFree(t *testing.T) {
 	meetings := make([]*model.Meeting, 0, meetingCount)
 	for i := 0; i < meetingCount; i++ {
 		meeting := newTestMeeting(t, dir, i)
-		seedMeetingAndTask(t, state, meeting)
+		seedMeetingWithFileInStorage(t, state, meeting)
 		meetings = append(meetings, meeting)
 	}
 
@@ -713,8 +748,9 @@ func TestMeetingProcessor_ConcurrentWorkersIsRaceFree(t *testing.T) {
 
 // failingAudioProcessor fails transcription on the first call for each meeting.
 type failingAudioProcessor struct {
-	mu       sync.Mutex
-	attempts map[string]int
+	mu          sync.Mutex
+	attempts    map[string]int
+	fileStorage storage.FileStorage
 }
 
 func (f *failingAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
@@ -723,6 +759,13 @@ func (f *failingAudioProcessor) TranscribeAudio(ctx context.Context, meeting *mo
 	f.attempts[meeting.ID]++
 	if f.attempts[meeting.ID] == 1 {
 		return "", fmt.Errorf("transcription failed")
+	}
+	if f.fileStorage != nil && meeting.FilePath != nil {
+		file, err := f.fileStorage.Open(ctx, *meeting.FilePath)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
 	}
 	return "transcription for " + meeting.ID, nil
 }
@@ -740,6 +783,7 @@ func newRetryTestState(t *testing.T) *fakeState {
 		UploadFileDir:    &uploadDir,
 		MaxUploadSize:    &maxUpload,
 	}
+	fileStorage := memory.NewStorage()
 
 	meetings := newFakeMeetingRepository()
 	tasks := newFakeTaskRepository()
@@ -752,7 +796,7 @@ func newRetryTestState(t *testing.T) *fakeState {
 	tasksService := service.NewTasksService(tasks, repoUtils)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,
@@ -760,7 +804,7 @@ func newRetryTestState(t *testing.T) *fakeState {
 		transcriptionService,
 		summaryService,
 		repoUtils,
-		&failingAudioProcessor{attempts: make(map[string]int)},
+		&failingAudioProcessor{attempts: make(map[string]int), fileStorage: fileStorage},
 		fakeLLMClient{},
 		serverConfig,
 		128,
@@ -782,7 +826,7 @@ func TestProcessMeetingInWorker_RetriesFromFailedStatus(t *testing.T) {
 	dir := t.TempDir()
 
 	meeting := newTestMeeting(t, dir, 0)
-	seedMeetingAndTask(t, state, meeting)
+	seedMeetingWithFileInStorage(t, state, meeting)
 
 	state.processor.processMeetingInWorker(0, meeting)
 
@@ -791,8 +835,11 @@ func TestProcessMeetingInWorker_RetriesFromFailedStatus(t *testing.T) {
 		t.Fatalf("expected status failed, got %q (ok=%v)", status, ok)
 	}
 
-	if _, err := os.Stat(*meeting.FilePath); err != nil {
-		t.Fatalf("audio file should be preserved after failure: %v", err)
+	var memStorage *memory.Storage
+	if memStorage, ok = state.processor.meetingService.FileStorage().(*memory.Storage); ok {
+		if _, ok = memStorage.Get(*meeting.FilePath); !ok {
+			t.Fatalf("audio file should be preserved after failure")
+		}
 	}
 
 	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
@@ -822,7 +869,7 @@ func TestRetryMeeting_QueueFull(t *testing.T) {
 	dir := t.TempDir()
 
 	meeting := newTestMeeting(t, dir, 0)
-	seedMeetingAndTask(t, state, meeting)
+	seedMeetingWithFileInStorage(t, state, meeting)
 
 	state.processor.processMeetingInWorker(0, meeting)
 

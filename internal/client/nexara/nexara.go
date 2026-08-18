@@ -4,47 +4,55 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/storage"
 )
 
 // NexaraClient is an audio processor implementation backed by the Nexara API.
 type NexaraClient struct {
-	config *config.NexaraConfig
-	client *resty.Client
+	config      *config.NexaraConfig
+	client      *resty.Client
+	fileStorage storage.FileStorage
 }
 
 // NewNexaraClient creates a new Nexara API client from server configuration.
 func NewNexaraClient(
 	serverConfig *config.ServerConfig,
+	fileStorage storage.FileStorage,
 ) *NexaraClient {
 	return &NexaraClient{
-		config: serverConfig.Nexara,
-		client: createRestyClient(),
+		config:      serverConfig.Nexara,
+		client:      createRestyClient(),
+		fileStorage: fileStorage,
 	}
 }
 
-// TranscribeAudio uploads the meeting audio to SaluteSpeech and returns the recognized text.
+// TranscribeAudio uploads the meeting audio to Nexara and returns the recognized text.
 func (n *NexaraClient) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("nexara client: start transribing audio")
 
-	file, err := os.Open(*meeting.FilePath)
+	file, err := n.fileStorage.Open(ctx, *meeting.FilePath)
 	if err != nil {
 		return "", fmt.Errorf("nexara client failed to open audio file, err: %s, path: %s", err, *meeting.FilePath)
 	}
 	defer file.Close()
 
+	filename := "audio.mp3"
+	if meeting.OriginalFilename != nil && *meeting.OriginalFilename != "" {
+		filename = *meeting.OriginalFilename
+	}
+
 	var uploadResponse NexaraRecognizedText
 	resp, err := n.client.R().
 		SetContext(ctx).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", n.config.ApiToken)).
-		SetFile("file", *meeting.FilePath).
+		SetFileReader("file", filename, file).
 		SetFormData(map[string]string{
 			"model": "whisper-1",
 		}).

@@ -14,22 +14,26 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/storage"
 )
 
 // SaluteSpeechClient is an audio processor implementation backed by the SaluteSpeech API.
 type SaluteSpeechClient struct {
-	config *config.SaluteSpeechConfig
-	client *resty.Client
-	token  SaluteAuthToken
+	config      *config.SaluteSpeechConfig
+	client      *resty.Client
+	token       SaluteAuthToken
+	fileStorage storage.FileStorage
 }
 
 // NewSaluteSpeechClient creates a new SaluteSpeech API client from server configuration.
 func NewSaluteSpeechClient(
 	serverConfig *config.ServerConfig,
+	fileStorage storage.FileStorage,
 ) *SaluteSpeechClient {
 	return &SaluteSpeechClient{
-		config: serverConfig.SaluteSpeech,
-		client: createRestyClient(),
+		config:      serverConfig.SaluteSpeech,
+		client:      createRestyClient(),
+		fileStorage: fileStorage,
 	}
 }
 
@@ -114,7 +118,7 @@ func (s *SaluteSpeechClient) getToken(ctx context.Context) (string, error) {
 
 func (s *SaluteSpeechClient) sendFile(ctx context.Context, filePath string) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	file, err := os.Open(filePath)
+	file, err := s.fileStorage.Open(ctx, filePath)
 	if err != nil {
 		return "", fmt.Errorf("salute speech client failed to open audio file, err: %s, path: %s", err, filePath)
 	}
