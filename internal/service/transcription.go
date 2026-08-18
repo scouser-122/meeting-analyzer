@@ -13,7 +13,7 @@ type TranscriptionService struct {
 	repositoryUtils    repository.RepositoryUtils
 }
 
-// MeetingsService creates new MeetingsService instance
+// NewTranscriptionService creates new TranscriptionService instance.
 func NewTranscriptionService(
 	transcriptionsRepo repository.TranscriptionRepository,
 	repositoryUtils repository.RepositoryUtils,
@@ -24,10 +24,12 @@ func NewTranscriptionService(
 	return &service
 }
 
+// AddNewTranscription persists a new transcription record.
 func (t *TranscriptionService) AddNewTranscription(ctx context.Context, transcription *model.Transcription) error {
 	return t.transcriptionsRepo.Create(ctx, transcription)
 }
 
+// GetByMeetingID returns the transcription for the specified meeting.
 func (t *TranscriptionService) GetByMeetingID(ctx context.Context, meetingID string) (*model.Transcription, error) {
 	transcription, err := t.transcriptionsRepo.GetByMeetingID(ctx, meetingID)
 	if err != nil {
@@ -36,10 +38,17 @@ func (t *TranscriptionService) GetByMeetingID(ctx context.Context, meetingID str
 	return transcription, nil
 }
 
+// FindByTextContains searches transcriptions by text using full-text search.
 func (t *TranscriptionService) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
 	return t.transcriptionsRepo.FindByTextContains(ctx, userID, textPart)
 }
 
+// FindByKeyWords searches transcriptions by keywords and topic using full-text search.
 func (t *TranscriptionService) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
 	return t.transcriptionsRepo.FindByKeyWords(ctx, userID, keywords, topic)
+}
+
+// DeleteByMeetingID removes the task associated with the specified meeting.
+func (t *TranscriptionService) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return t.transcriptionsRepo.DeleteByMeetingID(ctx, meetingID)
 }

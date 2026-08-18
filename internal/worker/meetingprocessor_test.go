@@ -1,10 +1,13 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +19,8 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,6 +84,13 @@ func (f *fakeMeetingRepository) Update(ctx context.Context, m *model.Meeting) er
 	c := cloneMeeting(m)
 	c.UpdatedAt = time.Now()
 	f.meetings[m.ID] = c
+	return nil
+}
+
+func (f *fakeMeetingRepository) Delete(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.meetings, id)
 	return nil
 }
 
@@ -158,6 +170,18 @@ func (f *fakeTaskRepository) UpdateStatus(ctx context.Context, id string, status
 	return nil
 }
 
+func (f *fakeTaskRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for id, task := range f.byID {
+		if task.MeetingID == meetingID {
+			delete(f.byID, id)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (f *fakeTaskRepository) statusByMeeting(meetingID string) (model.TaskStatus, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -208,7 +232,7 @@ func (f *fakeTranscriptionRepository) GetByMeetingID(ctx context.Context, meetin
 	defer f.mu.Unlock()
 	t, ok := f.data[meetingID]
 	if !ok {
-		return nil, fmt.Errorf("transcription not found")
+		return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
 	}
 	c := *t
 	return &c, nil
@@ -220,6 +244,10 @@ func (f *fakeTranscriptionRepository) FindByTextContains(ctx context.Context, us
 
 func (f *fakeTranscriptionRepository) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
 	return nil, nil
+}
+
+func (f *fakeTranscriptionRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return nil
 }
 
 func (f *fakeTranscriptionRepository) get(meetingID string) (*model.Transcription, bool) {
@@ -263,6 +291,10 @@ func (f *fakeSummaryRepository) GetByMeetingID(ctx context.Context, meetingID st
 
 func (f *fakeSummaryRepository) FindByTextContains(ctx context.Context, userID, textPart string) ([]*model.Summary, error) {
 	return nil, nil
+}
+
+func (f *fakeSummaryRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return nil
 }
 
 func (f *fakeSummaryRepository) get(meetingID string) (*model.Summary, bool) {
@@ -318,9 +350,18 @@ type fakeTransaction struct{}
 func (*fakeTransaction) Rollback(ctx context.Context) error { return nil }
 func (*fakeTransaction) Commit(ctx context.Context) error   { return nil }
 
-type fakeAudioProcessor struct{}
+type fakeAudioProcessor struct {
+	fileStorage storage.FileStorage
+}
 
-func (fakeAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+func (f fakeAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	if f.fileStorage != nil && meeting.FilePath != nil {
+		file, err := f.fileStorage.Open(ctx, *meeting.FilePath)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
+	}
 	return "transcription for " + meeting.ID, nil
 }
 
@@ -363,13 +404,16 @@ func newRaceTestState(t *testing.T) *fakeState {
 	t.Helper()
 
 	limit := 8
+	timeout := 30
 	uploadDir := t.TempDir()
 	maxUpload := int64(10 << 20)
 	serverConfig := &config.ServerConfig{
-		ProcessorLimit: &limit,
-		UploadFileDir:  &uploadDir,
-		MaxUploadSize:  &maxUpload,
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
 	}
+	fileStorage := memory.NewStorage()
 
 	meetings := newFakeMeetingRepository()
 	tasks := newFakeTaskRepository()
@@ -380,9 +424,9 @@ func newRaceTestState(t *testing.T) *fakeState {
 
 	usersService := service.NewUsersService(users)
 	tasksService := service.NewTasksService(tasks, repoUtils)
-	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, serverConfig)
 	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
 	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
 
 	processor := NewMeetingProcessorWithBuffer(
 		meetingsService,
@@ -390,7 +434,7 @@ func newRaceTestState(t *testing.T) *fakeState {
 		transcriptionService,
 		summaryService,
 		repoUtils,
-		fakeAudioProcessor{},
+		fakeAudioProcessor{fileStorage: fileStorage},
 		fakeLLMClient{},
 		serverConfig,
 		128,
@@ -422,12 +466,206 @@ func newTestMeeting(t *testing.T, dir string, idx int) *model.Meeting {
 	}
 }
 
+func seedMeetingWithFileInStorage(t *testing.T, state *fakeState, meeting *model.Meeting) {
+	t.Helper()
+
+	seedMeetingAndTask(t, state, meeting)
+
+	content, err := os.ReadFile(*meeting.FilePath)
+	if err != nil {
+		t.Fatalf("read meeting file: %v", err)
+	}
+
+	if err := state.processor.meetingService.FileStorage().Save(
+		context.Background(),
+		*meeting.FilePath,
+		bytes.NewReader(content),
+		int64(len(content)),
+		"audio/mpeg",
+	); err != nil {
+		t.Fatalf("save meeting file to storage: %v", err)
+	}
+}
+
 func seedMeetingAndTask(t *testing.T, state *fakeState, meeting *model.Meeting) {
 	t.Helper()
 
 	state.meetings.put(meeting)
 	if _, err := state.tasks.Create(context.Background(), meeting.ID); err != nil {
 		t.Fatalf("seed task for meeting %s: %v", meeting.ID, err)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Моки для проверки таймаута.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type slowAudioProcessor struct {
+	delay    time.Duration
+	blockCtx bool
+}
+
+func (s slowAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	timer := time.NewTimer(s.delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-timer.C:
+		return "transcription for " + meeting.ID, nil
+	}
+}
+
+func newTimeoutTestState(t *testing.T, timeoutSec int, audio client.AudioProcessor) *fakeState {
+	t.Helper()
+
+	limit := 1
+	timeout := timeoutSec
+	uploadDir := t.TempDir()
+	maxUpload := int64(10 << 20)
+	serverConfig := &config.ServerConfig{
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
+	}
+	fileStorage := memory.NewStorage()
+
+	meetings := newFakeMeetingRepository()
+	tasks := newFakeTaskRepository()
+	transcriptions := newFakeTranscriptionRepository()
+	summaries := newFakeSummaryRepository()
+	users := newFakeUserRepository()
+	repoUtils := fakeRepoUtils{}
+
+	usersService := service.NewUsersService(users)
+	tasksService := service.NewTasksService(tasks, repoUtils)
+	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
+	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
+
+	processor := NewMeetingProcessorWithBuffer(
+		meetingsService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+		repoUtils,
+		audio,
+		fakeLLMClient{},
+		serverConfig,
+		128,
+	)
+
+	return &fakeState{
+		processor:      processor,
+		meetings:       meetings,
+		tasks:          tasks,
+		transcriptions: transcriptions,
+		summaries:      summaries,
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты таймаута processMeetingInWorker
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestProcessMeetingInWorker_Timeout(t *testing.T) {
+	type when struct {
+		audioDelay time.Duration
+		blockCtx   bool
+		timeoutSec int
+	}
+
+	type want struct {
+		status           model.TaskStatus
+		errContains      string
+		hasTranscription bool
+		hasSummary       bool
+	}
+
+	var testsList = []struct {
+		name string
+		when when
+		want want
+	}{
+		{
+			name: "audio processor exceeds timeout",
+			when: when{
+				audioDelay: 1500 * time.Millisecond,
+				blockCtx:   true,
+				timeoutSec: 1,
+			},
+			want: want{
+				status:           model.TaskStatusFailed,
+				errContains:      "context deadline exceeded",
+				hasTranscription: false,
+				hasSummary:       false,
+			},
+		},
+		{
+			name: "audio processor finishes before timeout",
+			when: when{
+				audioDelay: 50 * time.Millisecond,
+				blockCtx:   true,
+				timeoutSec: 1,
+			},
+			want: want{
+				status:           model.TaskStatusCompleted,
+				errContains:      "",
+				hasTranscription: true,
+				hasSummary:       true,
+			},
+		},
+	}
+
+	for _, test := range testsList {
+		t.Run(test.name, func(t *testing.T) {
+			audio := slowAudioProcessor{delay: test.when.audioDelay, blockCtx: test.when.blockCtx}
+			state := newTimeoutTestState(t, test.when.timeoutSec, audio)
+			dir := t.TempDir()
+
+			meeting := newTestMeeting(t, dir, 0)
+			seedMeetingAndTask(t, state, meeting)
+
+			state.processor.processMeetingInWorker(0, meeting)
+
+			status, ok := state.tasks.statusByMeeting(meeting.ID)
+			if !ok {
+				t.Fatalf("task for meeting %s not found", meeting.ID)
+			}
+			if status != test.want.status {
+				t.Errorf("status = %q, want %q", status, test.want.status)
+			}
+
+			_, hasTranscription := state.transcriptions.get(meeting.ID)
+			if hasTranscription != test.want.hasTranscription {
+				t.Errorf("hasTranscription = %v, want %v", hasTranscription, test.want.hasTranscription)
+			}
+
+			_, hasSummary := state.summaries.get(meeting.ID)
+			if hasSummary != test.want.hasSummary {
+				t.Errorf("hasSummary = %v, want %v", hasSummary, test.want.hasSummary)
+			}
+
+			if test.want.errContains != "" {
+				state.tasks.mu.Lock()
+				var task *model.Task
+				for _, tt := range state.tasks.byID {
+					if tt.MeetingID == meeting.ID {
+						task = tt
+						break
+					}
+				}
+				state.tasks.mu.Unlock()
+
+				if task == nil || task.ErrorMessage == nil {
+					t.Errorf("expected error message containing %q, got nil", test.want.errContains)
+				} else if !strings.Contains(*task.ErrorMessage, test.want.errContains) {
+					t.Errorf("error message = %q, want containing %q", *task.ErrorMessage, test.want.errContains)
+				}
+			}
+		})
 	}
 }
 
@@ -447,7 +685,7 @@ func TestProcessMeetingInWorker_ConcurrentProcessingIsRaceFree(t *testing.T) {
 	meetings := make([]*model.Meeting, 0, meetingCount)
 	for i := 0; i < meetingCount; i++ {
 		meeting := newTestMeeting(t, dir, i)
-		seedMeetingAndTask(t, state, meeting)
+		seedMeetingWithFileInStorage(t, state, meeting)
 		meetings = append(meetings, meeting)
 	}
 
@@ -488,7 +726,7 @@ func TestMeetingProcessor_ConcurrentWorkersIsRaceFree(t *testing.T) {
 	meetings := make([]*model.Meeting, 0, meetingCount)
 	for i := 0; i < meetingCount; i++ {
 		meeting := newTestMeeting(t, dir, i)
-		seedMeetingAndTask(t, state, meeting)
+		seedMeetingWithFileInStorage(t, state, meeting)
 		meetings = append(meetings, meeting)
 	}
 
@@ -505,5 +743,143 @@ func TestMeetingProcessor_ConcurrentWorkersIsRaceFree(t *testing.T) {
 		if !ok || status != model.TaskStatusCompleted {
 			t.Errorf("meeting %s: status = %q (ok=%v), want %q", meeting.ID, status, ok, model.TaskStatusCompleted)
 		}
+	}
+}
+
+// failingAudioProcessor fails transcription on the first call for each meeting.
+type failingAudioProcessor struct {
+	mu          sync.Mutex
+	attempts    map[string]int
+	fileStorage storage.FileStorage
+}
+
+func (f *failingAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attempts[meeting.ID]++
+	if f.attempts[meeting.ID] == 1 {
+		return "", fmt.Errorf("transcription failed")
+	}
+	if f.fileStorage != nil && meeting.FilePath != nil {
+		file, err := f.fileStorage.Open(ctx, *meeting.FilePath)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
+	}
+	return "transcription for " + meeting.ID, nil
+}
+
+func newRetryTestState(t *testing.T) *fakeState {
+	t.Helper()
+
+	limit := 1
+	timeout := 30
+	uploadDir := t.TempDir()
+	maxUpload := int64(10 << 20)
+	serverConfig := &config.ServerConfig{
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
+	}
+	fileStorage := memory.NewStorage()
+
+	meetings := newFakeMeetingRepository()
+	tasks := newFakeTaskRepository()
+	transcriptions := newFakeTranscriptionRepository()
+	summaries := newFakeSummaryRepository()
+	users := newFakeUserRepository()
+	repoUtils := fakeRepoUtils{}
+
+	usersService := service.NewUsersService(users)
+	tasksService := service.NewTasksService(tasks, repoUtils)
+	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
+	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig, fileStorage)
+
+	processor := NewMeetingProcessorWithBuffer(
+		meetingsService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+		repoUtils,
+		&failingAudioProcessor{attempts: make(map[string]int), fileStorage: fileStorage},
+		fakeLLMClient{},
+		serverConfig,
+		128,
+	)
+
+	return &fakeState{
+		processor:      processor,
+		meetings:       meetings,
+		tasks:          tasks,
+		transcriptions: transcriptions,
+		summaries:      summaries,
+	}
+}
+
+// TestProcessMeetingInWorker_RetriesFromFailedStatus verifies that a failed meeting
+// keeps its audio file and can be retried successfully.
+func TestProcessMeetingInWorker_RetriesFromFailedStatus(t *testing.T) {
+	state := newRetryTestState(t)
+	dir := t.TempDir()
+
+	meeting := newTestMeeting(t, dir, 0)
+	seedMeetingWithFileInStorage(t, state, meeting)
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	status, ok := state.tasks.statusByMeeting(meeting.ID)
+	if !ok || status != model.TaskStatusFailed {
+		t.Fatalf("expected status failed, got %q (ok=%v)", status, ok)
+	}
+
+	var memStorage *memory.Storage
+	if memStorage, ok = state.processor.meetingService.FileStorage().(*memory.Storage); ok {
+		if _, ok = memStorage.Get(*meeting.FilePath); !ok {
+			t.Fatalf("audio file should be preserved after failure")
+		}
+	}
+
+	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
+	if err != nil {
+		t.Fatalf("retry meeting: %v", err)
+	}
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	status, ok = state.tasks.statusByMeeting(meeting.ID)
+	if !ok || status != model.TaskStatusCompleted {
+		t.Errorf("expected status completed after retry, got %q (ok=%v)", status, ok)
+	}
+
+	updatedMeeting, err := state.meetings.GetByID(context.Background(), meeting.ID)
+	if err != nil {
+		t.Fatalf("get updated meeting: %v", err)
+	}
+	if updatedMeeting.FilePath != nil && *updatedMeeting.FilePath != "" {
+		t.Errorf("audio file path should be cleared after successful completion")
+	}
+}
+
+// TestRetryMeeting_QueueFull verifies that RetryMeeting returns an error when the queue is full.
+func TestRetryMeeting_QueueFull(t *testing.T) {
+	state := newRetryTestState(t)
+	dir := t.TempDir()
+
+	meeting := newTestMeeting(t, dir, 0)
+	seedMeetingWithFileInStorage(t, state, meeting)
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	// Fill the channel to capacity without starting workers.
+	for i := 0; i < 128; i++ {
+		state.processor.ProcessMeeting(meeting)
+	}
+
+	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
+	if err == nil || err.Error() != "processing queue is full" {
+		t.Errorf("expected queue full error, got %v", err)
 	}
 }

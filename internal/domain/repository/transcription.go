@@ -12,4 +12,5 @@ type TranscriptionRepository interface {
 	GetByMeetingID(ctx context.Context, meetingID string) (*model.Transcription, error)
 	FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error)
 	FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error)
+	DeleteByMeetingID(ctx context.Context, meetingID string) error
 }

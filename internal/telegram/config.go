@@ -25,6 +25,7 @@ type BackendConfig struct {
 	Timeout time.Duration `yaml:"timeout"`
 }
 
+// LoadConfig reads and parses the Telegram bot configuration from a YAML file.
 func LoadConfig(path string) (*TelegramBotConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

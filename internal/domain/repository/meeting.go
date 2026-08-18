@@ -13,5 +13,6 @@ type MeetingRepository interface {
 	GetByUserID(ctx context.Context, userID string) ([]*model.Meeting, error)
 	FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error)
 	Update(ctx context.Context, meeting *model.Meeting) error
+	Delete(ctx context.Context, id string) error
 	// Search(ctx context.Context, userID string, query string) ([]model.Meeting, error)
 }

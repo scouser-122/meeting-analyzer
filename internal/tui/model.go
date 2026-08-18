@@ -9,6 +9,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
+// Screen represents the current TUI screen.
 type Screen int
 
 const (
@@ -17,26 +18,33 @@ const (
 	ScreenList
 	ScreenStatus
 	ScreenTranscription
+	ScreenRetry
+	ScreenDelete
 	ScreenFind
 	ScreenChat
 	ScreenResult
 )
 
+// MenuItem represents a single item in the main menu.
 type MenuItem struct {
 	Label       string
 	Description string
 	Screen      Screen
 }
 
+// MenuItems is the list of available main menu options.
 var MenuItems = []MenuItem{
 	{Label: "Загрузить", Description: "Загрузка аудио-файла с записью встречи", Screen: ScreenLoad},
 	{Label: "Список встреч", Description: "Получить список встреч пользователя", Screen: ScreenList},
 	{Label: "Статус по встрече", Description: "Получить статус обработки встречи по ID", Screen: ScreenStatus},
 	{Label: "Транскрипция встречи", Description: "Получить транскрипцию встречи по ID", Screen: ScreenTranscription},
+	{Label: "Повторить обработку", Description: "Повторить обработку встречи по ID", Screen: ScreenRetry},
+	{Label: "Удалить встречу", Description: "Удалить встречу по ID", Screen: ScreenDelete},
 	{Label: "Поиск по фразе", Description: "Поиск встреч по ключевым словам", Screen: ScreenFind},
 	{Label: "Чат", Description: "Задайте вопрос по теме загруженных встреч", Screen: ScreenChat},
 }
 
+// Model holds the TUI application state.
 type Model struct {
 	API    *TuiClient
 	UserID string
@@ -64,6 +72,7 @@ type Model struct {
 	Height int
 }
 
+// NewModel creates a new TUI model with the given API client and user ID.
 func NewModel(apiClient *TuiClient, userID string) Model {
 	fp := textinput.New()
 	fp.Placeholder = "/path/to/audio/file.mp3"
@@ -97,6 +106,7 @@ func NewModel(apiClient *TuiClient, userID string) Model {
 	}
 }
 
+// Init is the Bubble Tea initialization command.
 func (m Model) Init() tea.Cmd {
 	return nil
 }

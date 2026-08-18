@@ -43,6 +43,7 @@ func NewPostgresTaskRepository(db *PostgresDatabase) *PostgresTaskRepository {
 	}
 }
 
+// Create creates a new processing task for the specified meeting.
 func (r *PostgresTaskRepository) Create(ctx context.Context, meetingID string) (*model.Task, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	repo := r.repo
@@ -63,6 +64,7 @@ func (r *PostgresTaskRepository) Create(ctx context.Context, meetingID string) (
 	return task, nil
 }
 
+// GetByID returns a task by its identifier.
 func (r *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*model.Task, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	task, err := r.repo.GetByID(ctx, id)
@@ -76,6 +78,7 @@ func (r *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*model
 	return task, nil
 }
 
+// GetByMeetingID returns the task associated with the specified meeting.
 func (r *PostgresTaskRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Task, error) {
 	task, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
@@ -87,6 +90,7 @@ func (r *PostgresTaskRepository) GetByMeetingID(ctx context.Context, meetingID s
 	return task, nil
 }
 
+// UpdateStatus updates the status and optional error message of a task.
 func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, status model.TaskStatus, errorMessage *string) error {
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -107,12 +111,30 @@ func (r *PostgresTaskRepository) UpdateStatus(ctx context.Context, id string, st
 	return nil
 }
 
+// DeleteByMeetingID removes the task associated with the specified meeting.
+func (r *PostgresTaskRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM tasks WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 // NewPostgresTaskRepositoryFromPool creates Postgres tasks storage from pool interface (for testing with pgxmock)
 func NewPostgresTaskRepositoryFromPool(pool QueryExecutor) *PostgresTaskRepository {
 	mapper := func(row pgx.Row) (*model.Task, error) {
 		var task model.Task
 		err := row.Scan(
-&task.ID,
+			&task.ID,
 			&task.MeetingID,
 			&task.Status,
 			&task.ErrorMessage,

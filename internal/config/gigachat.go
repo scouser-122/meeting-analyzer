@@ -1,5 +1,6 @@
 package config
 
+// GigaChatConfig holds configuration parameters for the GigaChat API client.
 type GigaChatConfig struct {
 	// GetTokenAddress specifies address to get token
 	GetTokenAddress string `yaml:"get_token_address"`

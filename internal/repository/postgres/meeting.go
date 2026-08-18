@@ -42,6 +42,7 @@ func NewPostgresMeetingRepository(db *PostgresDatabase) *PostgresMeetingReposito
 	}
 }
 
+// Create creates a new meeting for the specified user.
 func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (*model.Meeting, error) {
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -56,6 +57,7 @@ func (r *PostgresMeetingRepository) Create(ctx context.Context, userID string) (
 	return meeting, nil
 }
 
+// GetByID returns a meeting by its identifier.
 func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*model.Meeting, error) {
 	meeting, err := r.repo.GetByID(ctx, id)
 	if err != nil {
@@ -67,6 +69,7 @@ func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*mo
 	return meeting, nil
 }
 
+// Update updates the meeting record in the database.
 func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.Meeting) error {
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -90,6 +93,7 @@ func (r *PostgresMeetingRepository) Update(ctx context.Context, meeting *model.M
 
 const meetingsPageSize = 10
 
+// GetByUserID returns all meetings owned by the specified user.
 func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID string) ([]*model.Meeting, error) {
 	result := []*model.Meeting{}
 	for meetings, err := range r.repo.GetAllConditional(
@@ -107,6 +111,7 @@ func (r *PostgresMeetingRepository) GetByUserID(ctx context.Context, userID stri
 	return result, nil
 }
 
+// FindByNameContains searches user meetings by a substring of the meeting name.
 func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, userID string, namePart string) ([]*model.Meeting, error) {
 	result := []*model.Meeting{}
 	for meetings, err := range r.repo.GetAllConditional(
@@ -124,12 +129,30 @@ func (r *PostgresMeetingRepository) FindByNameContains(ctx context.Context, user
 	return result, nil
 }
 
+// Delete removes a meeting by its identifier.
+func (r *PostgresMeetingRepository) Delete(ctx context.Context, id string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM meetings WHERE id = $1",
+		id,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 // NewPostgresMeetingRepositoryFromPool creates Postgres meetings storage from pool interface (for testing with pgxmock)
 func NewPostgresMeetingRepositoryFromPool(pool QueryExecutor) *PostgresMeetingRepository {
 	mapper := func(row pgx.Row) (*model.Meeting, error) {
 		var meeting model.Meeting
 		err := row.Scan(
-&meeting.ID,
+			&meeting.ID,
 			&meeting.UserID,
 			&meeting.MeetingName,
 			&meeting.FilePath,

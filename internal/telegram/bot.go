@@ -11,18 +11,21 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+// TelegramBot wraps a Telegram bot that proxies user commands to the backend API.
 type TelegramBot struct {
 	config *TelegramBotConfig
 	client *TelegramClient
 	bot    *tele.Bot
 }
 
+// NewTelegramBot creates a new Telegram bot instance without initializing the underlying client.
 func NewTelegramBot(config *TelegramBotConfig) *TelegramBot {
 	return &TelegramBot{
 		config: config,
 	}
 }
 
+// Init creates the backend client and registers Telegram handlers.
 func (b *TelegramBot) Init() error {
 	b.client = NewClient(b.config.Backend.BaseURL)
 
@@ -40,6 +43,8 @@ func (b *TelegramBot) Init() error {
 	bot.Handle("/list", b.handleList)
 	bot.Handle("/status", b.handleStatus)
 	bot.Handle("/transcription", b.handleTranscription)
+	bot.Handle("/retry", b.handleRetry)
+	bot.Handle("/delete", b.handleDelete)
 	bot.Handle("/find", b.handleFind)
 
 	bot.Handle(tele.OnAudio, b.handleMedia)
@@ -53,6 +58,7 @@ func (b *TelegramBot) Init() error {
 	return nil
 }
 
+// Run starts the bot and blocks until it is stopped.
 func (b *TelegramBot) Run() {
 	slog.Info("telegram bot started")
 	b.bot.Start()
@@ -164,6 +170,30 @@ func (b *TelegramBot) handleTranscription(c tele.Context) error {
 		return c.Send(fmt.Sprintf("Ошибка получения транскрипции: %v", err))
 	}
 	return c.Send(resp.Text)
+}
+
+func (b *TelegramBot) handleRetry(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send("Укажите ID встречи: /retry <meeting_id>")
+	}
+	userID := UserIDFromTelegramID(c.Sender().ID)
+	if err := b.client.Retry(userID, args[0]); err != nil {
+		return c.Send(fmt.Sprintf("Ошибка повторной обработки встречи: %v", err))
+	}
+	return c.Send("Встреча поставлена в очередь на повторную обработку.")
+}
+
+func (b *TelegramBot) handleDelete(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send("Укажите ID встречи: /delete <meeting_id>")
+	}
+	userID := UserIDFromTelegramID(c.Sender().ID)
+	if err := b.client.Delete(userID, args[0]); err != nil {
+		return c.Send(fmt.Sprintf("Ошибка удаления встречи: %v", err))
+	}
+	return c.Send("Встреча успешно удалена.")
 }
 
 func (b *TelegramBot) handleFind(c tele.Context) error {

@@ -13,7 +13,7 @@ type SummaryService struct {
 	repositoryUtils repository.RepositoryUtils
 }
 
-// NewSummaryService creates new SummaryService instance
+// NewSummaryService creates new SummaryService instance.
 func NewSummaryService(
 	summaryRepo repository.SummaryRepository,
 	repositoryUtils repository.RepositoryUtils,
@@ -24,10 +24,12 @@ func NewSummaryService(
 	return &service
 }
 
+// AddNewSummary persists a new transcription summary.
 func (s *SummaryService) AddNewSummary(ctx context.Context, summary *model.Summary) error {
 	return s.summaryRepo.Create(ctx, summary)
 }
 
+// GetSummary returns the summary text for a meeting, or nil if not found.
 func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*string, error) {
 	summary, err := s.summaryRepo.GetByMeetingID(ctx, meetingID)
 	if err != nil {
@@ -39,6 +41,12 @@ func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*str
 	return &summary.Text, nil
 }
 
+// FindByTextContains searches summaries by text using full-text search.
 func (s *SummaryService) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
 	return s.summaryRepo.FindByTextContains(ctx, userID, textPart)
+}
+
+// DeleteByMeetingID removes the summary associated with the specified meeting.
+func (t *SummaryService) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	return t.summaryRepo.DeleteByMeetingID(ctx, meetingID)
 }

@@ -10,3 +10,6 @@ cmd/server/server
 .TODO
 cmd/telegram-bot/config.yaml
 cmd/server/log/
+tests_task.md
+cmd/telegram-bot/telegram_bot
+test_case.md

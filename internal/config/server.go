@@ -33,14 +33,30 @@ type ServerConfig struct {
 	// MaxUploadSize specifies max meeting audio file upload size
 	MaxUploadSize *int64 `env:"MAX_UPLOAD_SIZE" yaml:"max_upload_size"`
 
-	// MaxUploadSize specifies limit for simultaneous metting processing jobs
+	// ProcessorLimit specifies limit for simultaneous metting processing jobs
 	ProcessorLimit *int `env:"PROCESSOR_LIMIT" yaml:"processor_limit"`
+
+	// ProcessorTimeout specifies timeout for metting processing job (in seconds)
+	ProcessorTimeout *int `env:"PROCESSOR_TIMEOUT" yaml:"processor_timeout"`
 
 	// SaluteSpeech specifies config to interact with SaluteSpeech API
 	SaluteSpeech *SaluteSpeechConfig `yaml:"salute_speech"`
 
 	// GigaChat specifies config to interact with GigaChat API
 	GigaChat *GigaChatConfig `yaml:"giga_chat"`
+
+	// Nexara specifies config to interact with Nexara API
+	Nexara *NexaraConfig `yaml:"nexara"`
+
+	// RecognizeService specifies which service should be used to transcribe audio
+	RecognizeService *string `yaml:"recognize_service"`
+
+	// FileStorageType specifies where uploaded audio files should be stored.
+	// Supported values: "filesystem", "minio".
+	FileStorageType *string `env:"FILE_STORAGE_TYPE" yaml:"file_storage_type"`
+
+	// Minio specifies config to interact with MinIO object storage
+	Minio *MinioConfig `yaml:"minio"`
 
 	// ConfigFile config filein yaml format path
 	ConfigFile *string
@@ -57,8 +73,13 @@ func DefaultServerConfig() ServerConfig {
 		ShutdownTimeout:  new(time.Duration),
 		ConfigFile:       new(string),
 		ProcessorLimit:   new(int),
+		ProcessorTimeout: new(int),
 		SaluteSpeech:     new(SaluteSpeechConfig),
 		GigaChat:         new(GigaChatConfig),
+		Nexara:           new(NexaraConfig),
+		RecognizeService: new(string),
+		FileStorageType:  new(string),
+		Minio:            new(MinioConfig),
 	}
 	*result.RunAddr = "localhost:8080"
 	*result.LogLevel = "info"
@@ -66,6 +87,8 @@ func DefaultServerConfig() ServerConfig {
 	*result.DBDataSourceName = "postgres://postgres:password@localhost:5432/mydb?sslmode=disable"
 	*result.ShutdownTimeout = 30 * time.Second
 	*result.ProcessorLimit = 5
+	*result.ProcessorTimeout = 30
+	*result.FileStorageType = "filesystem"
 	return result
 }
 

@@ -13,6 +13,7 @@ type apiResultMsg struct {
 	err    error
 }
 
+// Update handles incoming messages and updates the TUI model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -128,7 +129,7 @@ func (m *Model) focusFirstInput() tea.Cmd {
 	switch m.Screen {
 	case ScreenLoad:
 		return m.FilePathInput.Focus()
-	case ScreenStatus, ScreenTranscription:
+	case ScreenStatus, ScreenTranscription, ScreenRetry, ScreenDelete:
 		return m.MeetingIDInput.Focus()
 	case ScreenFind:
 		return m.KeywordsInput.Focus()
@@ -149,7 +150,7 @@ func (m *Model) cycleFocus() tea.Cmd {
 		m.FilePathInput.Blur()
 		return m.MeetingNameInput.Focus()
 
-	case ScreenStatus, ScreenTranscription:
+	case ScreenStatus, ScreenTranscription, ScreenRetry:
 		return nil
 
 	case ScreenFind:
@@ -195,6 +196,26 @@ func (m Model) submitForm() (tea.Model, tea.Cmd) {
 		m.MeetingIDInput.Blur()
 		return m, m.fetchTranscription(meetingID)
 
+	case ScreenRetry:
+		meetingID := strings.TrimSpace(m.MeetingIDInput.Value())
+		if meetingID == "" {
+			m.Error = "Не указан ID встречи"
+			return m, nil
+		}
+		m.Loading = true
+		m.MeetingIDInput.Blur()
+		return m, m.fetchRetry(meetingID)
+
+	case ScreenDelete:
+		meetingID := strings.TrimSpace(m.MeetingIDInput.Value())
+		if meetingID == "" {
+			m.Error = "Не указан ID встречи"
+			return m, nil
+		}
+		m.Loading = true
+		m.MeetingIDInput.Blur()
+		return m, m.fetchDelete(meetingID)
+
 	case ScreenFind:
 		keywords := strings.TrimSpace(m.KeywordsInput.Value())
 		if keywords == "" {
@@ -233,7 +254,7 @@ func (m Model) updateInputs(msg tea.Msg) (Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-	case ScreenStatus, ScreenTranscription:
+	case ScreenStatus, ScreenTranscription, ScreenRetry, ScreenDelete:
 		var cmd tea.Cmd
 		m.MeetingIDInput, cmd = m.MeetingIDInput.Update(msg)
 		cmds = append(cmds, cmd)
@@ -329,6 +350,34 @@ func (m Model) fetchTranscription(meetingID string) tea.Cmd {
 		return apiResultMsg{
 			result: resp.Text,
 			title:  "Transcription",
+		}
+	}
+}
+
+func (m Model) fetchRetry(meetingID string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.API.Retry(m.UserID, meetingID)
+		if err != nil {
+			return apiResultMsg{err: err}
+		}
+
+		return apiResultMsg{
+			result: fmt.Sprintf("Встреча %s поставлена в очередь на повторную обработку.", meetingID),
+			title:  "Повторная обработка",
+		}
+	}
+}
+
+func (m Model) fetchDelete(meetingID string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.API.Delete(m.UserID, meetingID)
+		if err != nil {
+			return apiResultMsg{err: err}
+		}
+
+		return apiResultMsg{
+			result: fmt.Sprintf("Встреча %s успешно удалена.", meetingID),
+			title:  "Удаление встречи",
 		}
 	}
 }

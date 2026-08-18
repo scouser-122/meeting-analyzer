@@ -12,13 +12,13 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
-// PostgresTranscriptionRepository implements TaskRepositoru interface to store tasks data in Postgres DB
+// PostgresTranscriptionRepository implements TranscriptionRepository interface to store transcription data in Postgres DB.
 type PostgresTranscriptionRepository struct {
 	Database *PostgresDatabase
 	repo     *GenericRepository[model.Transcription]
 }
 
-// NewPostgresTaskRepository creates Postgres tasks storage
+// NewPostgresTranscriptionRepository creates Postgres transcription storage.
 func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscriptionRepository {
 	mapper := func(row pgx.Row) (*model.Transcription, error) {
 		var transcription model.Transcription
@@ -41,6 +41,7 @@ func NewPostgresTranscriptionRepository(db *PostgresDatabase) *PostgresTranscrip
 	}
 }
 
+// Create persists a new transcription record in the database.
 func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcription *model.Transcription) error {
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -58,6 +59,7 @@ func (r *PostgresTranscriptionRepository) Create(ctx context.Context, transcript
 	return nil
 }
 
+// GetByMeetingID returns the transcription associated with the specified meeting.
 func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Transcription, error) {
 	transcription, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
@@ -69,6 +71,7 @@ func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, me
 	return transcription, nil
 }
 
+// FindByTextContains searches transcriptions by text using full-text search.
 func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Transcription, error) {
 	result := []*model.Transcription{}
 	const sql = `
@@ -108,6 +111,7 @@ func (r *PostgresTranscriptionRepository) FindByTextContains(ctx context.Context
 	return result, nil
 }
 
+// FindByKeyWords searches transcriptions by keywords and topic using full-text search.
 func (r *PostgresTranscriptionRepository) FindByKeyWords(ctx context.Context, userID string, keywords []string, topic string) ([]*model.Transcription, error) {
 	result := []*model.Transcription{}
 	terms := append(append([]string{}, keywords...), topic)
@@ -162,4 +166,22 @@ func buildTsQuery(terms []string) string {
 		quoted = append(quoted, "'"+strings.ReplaceAll(t, "'", "''")+"'")
 	}
 	return strings.Join(quoted, " | ")
+}
+
+// DeleteByMeetingID removes the transcription associated with the specified meeting.
+func (r *PostgresTranscriptionRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM transcriptions WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }

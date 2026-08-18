@@ -14,21 +14,30 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/logger"
+	"github.com/scouser-122/meeting-analyzer/internal/storage"
 )
 
+// SaluteSpeechClient is an audio processor implementation backed by the SaluteSpeech API.
 type SaluteSpeechClient struct {
-	config *config.SaluteSpeechConfig
-	token  SaluteAuthToken
+	config      *config.SaluteSpeechConfig
+	client      *resty.Client
+	token       SaluteAuthToken
+	fileStorage storage.FileStorage
 }
 
+// NewSaluteSpeechClient creates a new SaluteSpeech API client from server configuration.
 func NewSaluteSpeechClient(
 	serverConfig *config.ServerConfig,
+	fileStorage storage.FileStorage,
 ) *SaluteSpeechClient {
 	return &SaluteSpeechClient{
-		config: serverConfig.SaluteSpeech,
+		config:      serverConfig.SaluteSpeech,
+		client:      createRestyClient(),
+		fileStorage: fileStorage,
 	}
 }
 
+// TranscribeAudio uploads the meeting audio to SaluteSpeech and returns the recognized text.
 func (s *SaluteSpeechClient) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
 	logger.Info("salute speech client: start transribing audio")
@@ -71,7 +80,7 @@ func (s *SaluteSpeechClient) TranscribeAudio(ctx context.Context, meeting *model
 	return resultText, nil
 }
 
-func (s *SaluteSpeechClient) createRestyClient() *resty.Client {
+func createRestyClient() *resty.Client {
 	client := resty.New()
 	client.SetRetryCount(3).
 		SetRetryWaitTime(1 * time.Second).
@@ -92,10 +101,9 @@ func (s *SaluteSpeechClient) getToken(ctx context.Context) (string, error) {
 		return s.token.Token, nil
 	}
 
-	client := s.createRestyClient()
 	url := fmt.Sprintf("%s/api/v2/oauth", s.config.ServerAddress)
 
-	resp, err := client.R().
+	resp, err := s.client.R().
 		SetContext(ctx).
 		SetResult(&s.token).
 		Get(url)
@@ -110,13 +118,11 @@ func (s *SaluteSpeechClient) getToken(ctx context.Context) (string, error) {
 
 func (s *SaluteSpeechClient) sendFile(ctx context.Context, filePath string) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	file, err := os.Open(filePath)
+	file, err := s.fileStorage.Open(ctx, filePath)
 	if err != nil {
 		return "", fmt.Errorf("salute speech client failed to open audio file, err: %s, path: %s", err, filePath)
 	}
 	defer file.Close()
-
-	client := s.createRestyClient()
 
 	token, err := s.getToken(ctx)
 	if err != nil {
@@ -125,7 +131,7 @@ func (s *SaluteSpeechClient) sendFile(ctx context.Context, filePath string) (str
 
 	var uploadResponse SaluteSpeechUploadResponse
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := s.client.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "audio/mpeg").
 		SetHeader("X-Request-ID", requestID).
@@ -146,7 +152,6 @@ func (s *SaluteSpeechClient) sendFile(ctx context.Context, filePath string) (str
 
 func (s *SaluteSpeechClient) createRecognizeTask(ctx context.Context, fileID string) (string, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	client := s.createRestyClient()
 
 	token, err := s.getToken(ctx)
 	if err != nil {
@@ -161,7 +166,7 @@ func (s *SaluteSpeechClient) createRecognizeTask(ctx context.Context, fileID str
 
 	var response SaluteSpeechRecognizeResponse
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := s.client.R().
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("X-Request-ID", requestID).
@@ -186,7 +191,6 @@ func (s *SaluteSpeechClient) createRecognizeTask(ctx context.Context, fileID str
 
 func (s *SaluteSpeechClient) getRecognizeStatus(ctx context.Context, taskID string) (model.TaskStatus, error) {
 	logger := logger.GetSlogLoggerFromContext(ctx)
-	client := s.createRestyClient()
 
 	token, err := s.getToken(ctx)
 	if err != nil {
@@ -194,7 +198,7 @@ func (s *SaluteSpeechClient) getRecognizeStatus(ctx context.Context, taskID stri
 	}
 
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := s.client.R().
 		SetContext(ctx).
 		SetHeader("X-Request-ID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).
@@ -214,7 +218,6 @@ func (s *SaluteSpeechClient) getRecognizeStatus(ctx context.Context, taskID stri
 }
 
 func (s *SaluteSpeechClient) getResultFromFile(ctx context.Context, fileID string) (string, error) {
-	client := s.createRestyClient()
 
 	token, err := s.getToken(ctx)
 	if err != nil {
@@ -228,7 +231,7 @@ func (s *SaluteSpeechClient) getResultFromFile(ctx context.Context, fileID strin
 	transcriptionJsonPath := filepath.Join(s.config.RecognizedFileDir, fileID+".json")
 
 	requestID := uuid.New().String()
-	resp, err := client.R().
+	resp, err := s.client.R().
 		SetContext(ctx).
 		SetHeader("X-Request-ID", requestID).
 		SetHeader("Authorization", fmt.Sprintf("Bearer %s", token)).

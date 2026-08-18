@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/scouser-122/meeting-analyzer/internal/client"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
@@ -83,6 +85,7 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 
 		if len(transcriptions) > 0 {
 			var summary *string
+			var transcription *string
 			var meeting *model.Meeting
 			for _, t := range transcriptions {
 				summary, err = h.summaryService.GetSummary(req.Context(), t.MeetingID)
@@ -98,12 +101,19 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 					handleServiceError(err, res)
 					return
 				}
+				transcription = &t.Text
 				break
 			}
 			if summary == nil {
 				chatResponse.Answer = "Не удалось найти встречу по указанной теме"
 			} else {
-				chatResponse.Answer = fmt.Sprintf("Название встречи:\n%s\n\nДата создания:\n%s\n\nКраткая выжимка:\n%s", *meeting.MeetingName, meeting.UpdatedAt, *summary)
+				if slices.ContainsFunc(intent.Keywords, func(v string) bool {
+					return (strings.Contains(v, "запись") || strings.Contains(v, "транскрипция"))
+				}) {
+					chatResponse.Answer = fmt.Sprintf("Название встречи:\n%s\n\nДата создания:\n%s\n\nТранскрипция:\n%s", *meeting.MeetingName, meeting.UpdatedAt, *transcription)
+				} else {
+					chatResponse.Answer = fmt.Sprintf("Название встречи:\n%s\n\nДата создания:\n%s\n\nКраткая выжимка:\n%s", *meeting.MeetingName, meeting.UpdatedAt, *summary)
+				}
 			}
 		} else {
 			chatResponse.Answer = "Не удалось найти встречу по указанной теме"

@@ -17,6 +17,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +71,13 @@ func newTestChatHandler(
 	taskRepo := postgres.NewPostgresTaskRepositoryFromPool(mockDB)
 	tasksService := service.NewTasksService(taskRepo, repoUtils)
 
+	transcriptionRepo := postgres.NewPostgresTranscriptionRepository(db)
+	transcriptionService := service.NewTranscriptionService(transcriptionRepo, repoUtils)
+
+	// Репозитории summary и transcription используют PostgresDatabase (pool через unsafe).
+	summaryRepo := postgres.NewPostgresSummaryRepository(db)
+	summaryService := service.NewSummaryService(summaryRepo, repoUtils)
+
 	serverConfig := &config.ServerConfig{}
 	serverConfig.UploadFileDir = new(string)
 	*serverConfig.UploadFileDir = t.TempDir()
@@ -83,15 +91,11 @@ func newTestChatHandler(
 		repoUtils,
 		usersService,
 		tasksService,
+		transcriptionService,
+		summaryService,
 		serverConfig,
+		memory.NewStorage(),
 	)
-
-	// Репозитории summary и transcription используют PostgresDatabase (pool через unsafe).
-	summaryRepo := postgres.NewPostgresSummaryRepository(db)
-	summaryService := service.NewSummaryService(summaryRepo, repoUtils)
-
-	transcriptionRepo := postgres.NewPostgresTranscriptionRepository(db)
-	transcriptionService := service.NewTranscriptionService(transcriptionRepo, repoUtils)
 
 	return NewChatHandler(llm, meetingsService, tasksService, transcriptionService, summaryService)
 }

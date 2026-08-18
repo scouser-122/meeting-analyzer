@@ -11,4 +11,5 @@ type SummaryRepository interface {
 	Create(ctx context.Context, summary *model.Summary) error
 	GetByMeetingID(ctx context.Context, meetingID string) (*model.Summary, error)
 	FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error)
+	DeleteByMeetingID(ctx context.Context, meetingID string) error
 }

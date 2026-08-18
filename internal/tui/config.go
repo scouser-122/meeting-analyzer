@@ -7,10 +7,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TuiConfig holds configuration parameters for the TUI client.
 type TuiConfig struct {
 	BaseURL string `yaml:"base_url"`
 }
 
+// LoadConfig reads and parses the TUI configuration from a YAML file.
 func LoadConfig(path string) (*TuiConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

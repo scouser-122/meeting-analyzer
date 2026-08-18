@@ -14,11 +14,13 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
+// TuiClient is an HTTP client for the backend API used by the TUI application.
 type TuiClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
+// NewClient creates a TuiClient with the given backend base URL.
 func NewClient(baseURL string) *TuiClient {
 	return &TuiClient{
 		BaseURL: baseURL,
@@ -28,6 +30,7 @@ func NewClient(baseURL string) *TuiClient {
 	}
 }
 
+// Start registers a new user via the backend API.
 func (c *TuiClient) Start(userID string) (*models.CommonResponse, error) {
 	body := map[string]string{"id": userID}
 	resp, err := c.doJSON("POST", "/api/users/start", body)
@@ -49,6 +52,7 @@ func (c *TuiClient) Start(userID string) (*models.CommonResponse, error) {
 	return &result, nil
 }
 
+// Load uploads an audio file and metadata to the backend for processing.
 func (c *TuiClient) Load(userID, meetingName, filePath string) (*models.LoadResponse, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -101,6 +105,7 @@ func (c *TuiClient) Load(userID, meetingName, filePath string) (*models.LoadResp
 	return &result, nil
 }
 
+// List returns the list of meetings for the specified user.
 func (c *TuiClient) List(userID string) ([]models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/list?user_id=%s", c.BaseURL, userID)
 	resp, err := c.HTTPClient.Get(url)
@@ -122,6 +127,7 @@ func (c *TuiClient) List(userID string) ([]models.MeetingResponseData, error) {
 	return meetings, nil
 }
 
+// Status returns the processing status of the specified meeting.
 func (c *TuiClient) Status(userID, meetingID string) (*models.MeetingResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/status?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
@@ -143,6 +149,7 @@ func (c *TuiClient) Status(userID, meetingID string) (*models.MeetingResponseDat
 	return &meeting, nil
 }
 
+// Transcription returns the transcription text for the specified meeting.
 func (c *TuiClient) Transcription(userID, meetingID string) (*models.TranscriptionResponseData, error) {
 	url := fmt.Sprintf("%s/api/meetings/transcription?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
 	resp, err := c.HTTPClient.Get(url)
@@ -164,6 +171,49 @@ func (c *TuiClient) Transcription(userID, meetingID string) (*models.Transcripti
 	return &result, nil
 }
 
+// Retry schedules reprocessing of the specified meeting.
+func (c *TuiClient) Retry(userID, meetingID string) error {
+	body := map[string]string{
+		"user_id":    userID,
+		"meeting_id": meetingID,
+	}
+	resp, err := c.doJSON("POST", "/api/meetings/retry", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		var errResp models.CommonResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("%s", errResp.Message)
+	}
+	return nil
+}
+
+// Delete removes the specified meeting through the backend API.
+func (c *TuiClient) Delete(userID, meetingID string) error {
+	url := fmt.Sprintf("%s/api/meetings/delete?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp models.CommonResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("%s", errResp.Message)
+	}
+	return nil
+}
+
+// Find searches meetings by keywords through the backend API.
 func (c *TuiClient) Find(userID, keywords string) ([]models.MeetingResponseData, error) {
 	body := map[string]string{
 		"user_id":   userID,
@@ -188,6 +238,7 @@ func (c *TuiClient) Find(userID, keywords string) ([]models.MeetingResponseData,
 	return meetings, nil
 }
 
+// Chat sends a question to the backend chat assistant and returns the answer.
 func (c *TuiClient) Chat(userID, question string) (*models.ChatResponse, error) {
 	body := map[string]string{
 		"user_id":  userID,

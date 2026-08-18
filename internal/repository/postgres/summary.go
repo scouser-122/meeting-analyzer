@@ -11,13 +11,13 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
-// PostgresTranscriptionRepository implements TaskRepositoru interface to store tasks data in Postgres DB
+// PostgresSummaryRepository implements SummaryRepository interface to store summary data in Postgres DB.
 type PostgresSummaryRepository struct {
 	Database *PostgresDatabase
 	repo     *GenericRepository[model.Summary]
 }
 
-// NewPostgresTaskRepository creates Postgres tasks storage
+// NewPostgresSummaryRepository creates Postgres summary storage.
 func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryRepository {
 	mapper := func(row pgx.Row) (*model.Summary, error) {
 		var summary model.Summary
@@ -40,6 +40,7 @@ func NewPostgresSummaryRepository(db *PostgresDatabase) *PostgresSummaryReposito
 	}
 }
 
+// Create persists a new summary record in the database.
 func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.Summary) error {
 	repo := r.repo
 	tx := models.GetTransactionFromContext(ctx)
@@ -57,6 +58,7 @@ func (r *PostgresSummaryRepository) Create(ctx context.Context, summary *model.S
 	return nil
 }
 
+// GetByMeetingID returns the summary associated with the specified meeting.
 func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingID string) (*model.Summary, error) {
 	summary, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
@@ -68,6 +70,7 @@ func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingI
 	return summary, nil
 }
 
+// FindByTextContains searches summaries by text using full-text search.
 func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, userID string, textPart string) ([]*model.Summary, error) {
 	result := []*model.Summary{}
 	const sql = `
@@ -105,4 +108,22 @@ func (r *PostgresSummaryRepository) FindByTextContains(ctx context.Context, user
 		textPart,
 	)
 	return result, nil
+}
+
+// DeleteByMeetingID removes the summary associated with the specified meeting.
+func (r *PostgresSummaryRepository) DeleteByMeetingID(ctx context.Context, meetingID string) error {
+	repo := r.repo
+	tx := models.GetTransactionFromContext(ctx)
+	if tx != nil {
+		repo = r.repo.WithTx(tx.(pgx.Tx))
+	}
+	_, err := repo.Update(
+		ctx,
+		"DELETE FROM summary WHERE meeting_id = $1",
+		meetingID,
+	)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }

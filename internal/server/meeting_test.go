@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/repository/postgres"
 	"github.com/scouser-122/meeting-analyzer/internal/service"
+	"github.com/scouser-122/meeting-analyzer/internal/storage/memory"
 	"github.com/scouser-122/meeting-analyzer/internal/worker"
 )
 
@@ -58,13 +58,7 @@ func newMeetingProcessorWithBuffer(
 ) *worker.MeetingProcessor {
 	t.Helper()
 
-	serverConfig := &config.ServerConfig{}
-	serverConfig.UploadFileDir = new(string)
-	*serverConfig.UploadFileDir = uploadDir
-	serverConfig.MaxUploadSize = new(int64)
-	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
-	serverConfig.ProcessorLimit = new(int)
-	*serverConfig.ProcessorLimit = 5
+	serverConfig, fileStorage := newTestServerConfigAndStorage(uploadDir)
 
 	db := &postgres.PostgresDatabase{}
 	repoUtils := postgres.NewPostgresRepositoryUtils(db)
@@ -72,13 +66,20 @@ func newMeetingProcessorWithBuffer(
 	usersService := service.NewUsersService(userRepo)
 	meetingRepo := postgres.NewPostgresMeetingRepositoryFromPool(mockDB)
 	taskRepo := postgres.NewPostgresTaskRepositoryFromPool(mockDB)
+	transcriptionRepo := postgres.NewPostgresTranscriptionRepository(db)
 	tasksService := service.NewTasksService(taskRepo, repoUtils)
+	transcriptionService := service.NewTranscriptionService(transcriptionRepo, repoUtils)
+	summaryRepo := postgres.NewPostgresSummaryRepository(db)
+	summaryService := service.NewSummaryService(summaryRepo, repoUtils)
 	meetingsService := service.NewMeetingsService(
 		meetingRepo,
 		repoUtils,
 		usersService,
 		tasksService,
+		transcriptionService,
+		summaryService,
 		serverConfig,
+		fileStorage,
 	)
 
 	return worker.NewMeetingProcessorWithBuffer(
@@ -136,13 +137,7 @@ func newTestMeetingsHandler(
 ) *MeetingsHandler {
 	t.Helper()
 
-	serverConfig := &config.ServerConfig{}
-	serverConfig.UploadFileDir = new(string)
-	*serverConfig.UploadFileDir = uploadDir
-	serverConfig.MaxUploadSize = new(int64)
-	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
-	serverConfig.ProcessorLimit = new(int)
-	*serverConfig.ProcessorLimit = 5
+	serverConfig, fileStorage := newTestServerConfigAndStorage(uploadDir)
 
 	// repoUtils должен использовать тот же mockDB, чтобы транзакции работали через pgxmock.
 	// PostgresDatabase.pool — неэкспортированное поле, поэтому используем unsafe.Pointer.
@@ -169,7 +164,10 @@ func newTestMeetingsHandler(
 		repoUtils,
 		usersService,
 		tasksService,
+		transcriptionService,
+		summaryService,
 		serverConfig,
+		fileStorage,
 	)
 
 	// Создаём реальный MeetingProcessor через конструктор с буфером по умолчанию.
@@ -199,6 +197,19 @@ func newTestMeetingsHandler(
 		mp,
 		serverConfig,
 	)
+}
+
+func newTestServerConfigAndStorage(uploadDir string) (*config.ServerConfig, *memory.Storage) {
+	serverConfig := &config.ServerConfig{}
+	serverConfig.UploadFileDir = new(string)
+	*serverConfig.UploadFileDir = uploadDir
+	serverConfig.MaxUploadSize = new(int64)
+	*serverConfig.MaxUploadSize = 10 << 20 // 10 MB
+	serverConfig.ProcessorLimit = new(int)
+	*serverConfig.ProcessorLimit = 5
+	serverConfig.ProcessorTimeout = new(int)
+	*serverConfig.ProcessorTimeout = 30
+	return serverConfig, memory.NewStorage()
 }
 
 // processorFactory описывает функцию, создающую процессор встречи для теста.
@@ -503,8 +514,8 @@ func TestMeetingsHandler_HandleLoad(t *testing.T) {
 	}
 }
 
-// Дополнительный тест: проверка, что загруженный файл действительно сохраняется на диск.
-func TestMeetingsHandler_HandleLoad_SavesFileToDisk(t *testing.T) {
+// Дополнительный тест: проверка, что загруженный файл действительно сохраняется в хранилище.
+func TestMeetingsHandler_HandleLoad_SavesFileToStorage(t *testing.T) {
 	mockDB, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("failed to create mock pool: %v", err)
@@ -573,21 +584,21 @@ func TestMeetingsHandler_HandleLoad_SavesFileToDisk(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rr.Code)
 	}
 
-	files, err := os.ReadDir(uploadDir)
-	if err != nil {
-		t.Fatalf("failed to read upload dir: %v", err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("expected 1 uploaded file, got %d", len(files))
+	memStorage, ok := handler.meetingsService.FileStorage().(*memory.Storage)
+	if !ok {
+		t.Fatalf("expected memory storage")
 	}
 
-	uploadedPath := filepath.Join(uploadDir, files[0].Name())
-	uploadedContent, err := os.ReadFile(uploadedPath)
-	if err != nil {
-		t.Fatalf("failed to read uploaded file: %v", err)
+	var found bool
+	for key, storedContent := range memStorage.GetAll() {
+		if bytes.Equal(storedContent, content) {
+			found = true
+			t.Logf("file saved to storage with key: %s", key)
+			break
+		}
 	}
-	if !bytes.Equal(uploadedContent, content) {
-		t.Errorf("uploaded file content mismatch")
+	if !found {
+		t.Errorf("uploaded file content not found in storage")
 	}
 
 	if err := mockDB.ExpectationsWereMet(); err != nil {
@@ -1704,6 +1715,454 @@ var handleFindTests = []struct {
 			body:   `{"status":"error","message":"unexpected error happen"}`,
 		},
 	},
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты для HandleDelete
+// ─────────────────────────────────────────────────────────────────────────────
+
+type whenDelete struct {
+	method    string
+	meetingID string
+	userID    string
+	setupMock func(mock pgxmock.PgxPoolIface)
+}
+
+var handleDeleteTests = []struct {
+	name string
+	when whenDelete
+	want want
+}{
+	{
+		name: "Method Not Allowed - GET instead of DELETE",
+		when: whenDelete{
+			method:    http.MethodGet,
+			meetingID: "meeting-1",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusMethodNotAllowed,
+			body:   "",
+		},
+	},
+	{
+		name: "Bad Request - missing meeting_id",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'meeting_id' parameter"}`,
+		},
+	},
+	{
+		name: "Bad Request - missing user_id",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-1",
+			userID:    "",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'user_id' parameter"}`,
+		},
+	},
+	{
+		name: "Success - meeting deleted",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-1",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-1"
+				userID := "user-1"
+				name := "Weekly Standup"
+
+				// GetByID
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
+
+				// Delete task
+				mock.ExpectExec("DELETE FROM tasks").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+				// Delete transcription
+				mock.ExpectExec("DELETE FROM transcriptions").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+				// Delete summary
+				mock.ExpectExec("DELETE FROM summary").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+				// Delete meeting
+				mock.ExpectExec("DELETE FROM meetings").
+					WithArgs(meetingID).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+			},
+		},
+		want: want{
+			status: http.StatusOK,
+			body:   `{"status":"ok","message":"Встреча успешно удалена"}`,
+		},
+	},
+	{
+		name: "Not Found - meeting does not exist",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "nonexistent-meeting",
+			userID:    "user-1",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs("nonexistent-meeting").
+					WillReturnError(pgx.ErrNoRows)
+			},
+		},
+		want: want{
+			status: http.StatusNotFound,
+			body:   `{"status":"error","message":"meeting not found"}`,
+		},
+	},
+	{
+		name: "Forbidden - meeting belongs to another user",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-3",
+			userID:    "wrong-user",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-3"
+				name := "Planning"
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, "owner-user", &name, nil, nil, now, now))
+			},
+		},
+		want: want{
+			status: http.StatusForbidden,
+			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+		},
+	},
+	{
+		name: "Internal Server Error - DB error on GetByID",
+		when: whenDelete{
+			method:    http.MethodDelete,
+			meetingID: "meeting-4",
+			userID:    "user-4",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs("meeting-4").
+					WillReturnError(fmt.Errorf("connection refused"))
+			},
+		},
+		want: want{
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","message":"unexpected error happen"}`,
+		},
+	},
+}
+
+func TestMeetingsHandler_HandleDelete(t *testing.T) {
+	for _, tt := range handleDeleteTests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDB, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mockDB.Close()
+
+			if tt.when.setupMock != nil {
+				tt.when.setupMock(mockDB)
+			}
+
+			uploadDir, err := os.MkdirTemp("", "meeting-delete-test-*")
+			if err != nil {
+				t.Fatalf("failed to create temp upload dir: %v", err)
+			}
+			defer os.RemoveAll(uploadDir)
+
+			handler := newTestMeetingsHandler(t, mockDB, uploadDir, newMeetingProcessorForTest(10))
+
+			url := "/api/meetings/delete"
+			params := []string{}
+			if tt.when.meetingID != "" {
+				params = append(params, "meeting_id="+tt.when.meetingID)
+			}
+			if tt.when.userID != "" {
+				params = append(params, "user_id="+tt.when.userID)
+			}
+			if len(params) > 0 {
+				url += "?" + strings.Join(params, "&")
+			}
+			req := httptest.NewRequest(tt.when.method, url, nil)
+			rr := httptest.NewRecorder()
+			handler.HandleDelete(rr, req)
+
+			if rr.Code != tt.want.status {
+				t.Errorf("expected status %d, got %d", tt.want.status, rr.Code)
+			}
+
+			if tt.want.body != "" {
+				responseBody := strings.TrimSpace(rr.Body.String())
+				if !strings.Contains(responseBody, tt.want.body) {
+					t.Errorf("expected body to contain %q, got %q", tt.want.body, responseBody)
+				}
+			}
+
+			if err := mockDB.ExpectationsWereMet(); err != nil {
+				t.Errorf("unfulfilled mock expectations: %v", err)
+			}
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты для HandleFind
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Тесты для HandleRetry
+// ─────────────────────────────────────────────────────────────────────────────
+
+type whenRetry struct {
+	method    string
+	body      string
+	setupMock func(mock pgxmock.PgxPoolIface)
+}
+
+var handleRetryTests = []struct {
+	name string
+	when whenRetry
+	want want
+}{
+	{
+		name: "Method Not Allowed - GET instead of POST",
+		when: whenRetry{
+			method: http.MethodGet,
+			body:   `{"user_id":"user1","meeting_id":"meeting-1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusMethodNotAllowed,
+			body:   "",
+		},
+	},
+	{
+		name: "Bad Request - invalid JSON body",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{invalid json}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"invalid JSON body"}`,
+		},
+	},
+	{
+		name: "Bad Request - missing meeting_id",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"user_id":"user1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'meeting_id' parameter"}`,
+		},
+	},
+	{
+		name: "Bad Request - missing user_id",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"meeting_id":"meeting-1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				// Никаких обращений к БД не ожидается
+			},
+		},
+		want: want{
+			status: http.StatusBadRequest,
+			body:   `{"status":"error","message":"missing 'user_id' parameter"}`,
+		},
+	},
+	{
+		name: "Not Found - meeting does not exist",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"user_id":"user1","meeting_id":"nonexistent-meeting"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs("nonexistent-meeting").
+					WillReturnError(pgx.ErrNoRows)
+			},
+		},
+		want: want{
+			status: http.StatusNotFound,
+			body:   `{"status":"error","message":"meeting not found"}`,
+		},
+	},
+	{
+		name: "Forbidden - meeting belongs to another user",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"user_id":"wrong-user","meeting_id":"meeting-1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-1"
+				name := "Planning"
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, "owner-user", &name, nil, nil, now, now))
+			},
+		},
+		want: want{
+			status: http.StatusForbidden,
+			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+		},
+	},
+	{
+		name: "Success - retry scheduled for failed meeting",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"user_id":"user1","meeting_id":"meeting-1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-1"
+				userID := "user1"
+				name := "Weekly Standup"
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
+
+				mock.ExpectQuery("SELECT \\* FROM tasks").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "meeting_id", "status", "error_message", "created_at", "updated_at",
+					}).AddRow("task-1", meetingID, model.TaskStatusFailed, nil, now, now))
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
+			},
+		},
+		want: want{
+			status: http.StatusAccepted,
+			body:   `{"status":"ok","message":"Обработка встречи поставлена в очередь на повторную обработку"}`,
+		},
+	},
+	{
+		name: "Conflict - meeting already completed",
+		when: whenRetry{
+			method: http.MethodPost,
+			body:   `{"user_id":"user1","meeting_id":"meeting-1"}`,
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				now := time.Now()
+				meetingID := "meeting-1"
+				userID := "user1"
+				name := "Weekly Standup"
+
+				mock.ExpectQuery("SELECT \\* FROM meetings").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "user_id", "meeting_name", "file_path",
+						"original_file_name", "created_at", "updated_at",
+					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
+
+				mock.ExpectQuery("SELECT \\* FROM tasks").
+					WithArgs(meetingID).
+					WillReturnRows(pgxmock.NewRows([]string{
+						"id", "meeting_id", "status", "error_message", "created_at", "updated_at",
+					}).AddRow("task-1", meetingID, model.TaskStatusCompleted, nil, now, now))
+			},
+		},
+		want: want{
+			status: http.StatusConflict,
+			body:   `{"status":"error","message":"meeting already completed"}`,
+		},
+	},
+}
+
+func TestMeetingsHandler_HandleRetry(t *testing.T) {
+	for _, tt := range handleRetryTests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDB, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mockDB.Close()
+
+			if tt.when.setupMock != nil {
+				tt.when.setupMock(mockDB)
+			}
+
+			uploadDir, err := os.MkdirTemp("", "meeting-retry-test-*")
+			if err != nil {
+				t.Fatalf("failed to create temp upload dir: %v", err)
+			}
+			defer os.RemoveAll(uploadDir)
+
+			handler := newTestMeetingsHandler(t, mockDB, uploadDir, newMeetingProcessorForTest(10))
+
+			req := httptest.NewRequest(tt.when.method, "/api/meetings/retry", strings.NewReader(tt.when.body))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			handler.HandleRetry(rr, req)
+
+			if rr.Code != tt.want.status {
+				t.Errorf("expected status %d, got %d", tt.want.status, rr.Code)
+			}
+
+			if tt.want.body != "" {
+				responseBody := strings.TrimSpace(rr.Body.String())
+				if !strings.Contains(responseBody, tt.want.body) {
+					t.Errorf("expected body to contain %q, got %q", tt.want.body, responseBody)
+				}
+			}
+
+			if err := mockDB.ExpectationsWereMet(); err != nil {
+				t.Errorf("unfulfilled mock expectations: %v", err)
+			}
+		})
+	}
 }
 
 func TestMeetingsHandler_HandleFind(t *testing.T) {
