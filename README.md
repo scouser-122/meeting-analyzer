@@ -46,6 +46,7 @@ meeting-analyzer/
 │   ├── repository                # Реализация репозиториев для работы с данными
 │   ├── server                    # Обработка входящих запросов в сервисе бэкенда
 │   ├── service                   # Сервисный слой бэкенда
+│   ├── storage                   # Реализация файлового хранилища
 │   ├── telegram                  # Реализация Telegram бота
 │   ├── tui                       # Реализация TUI утилиты
 │   └── worker                    # Обработчики асинхронных задач
@@ -76,4 +77,9 @@ go test -race ./internal/worker/...
 ### Скрипт для отката миграций БД
 ```bash
 migrate -database "postgres://postgres:123@localhost:5432/meeting_analyzer?sslmode=disable" -path ./migrations down
+```
+
+### Запуск локального сервера minio
+```bash
+minio server ./cmd/server/data/minio
 ```
