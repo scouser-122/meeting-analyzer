@@ -11,3 +11,9 @@ type ChatRequest struct {
 	UserID   string `json:"user_id"`
 	Question string `json:"question"`
 }
+
+// RetryMeetingRequest represents a request body for retrying meeting processing.
+type RetryMeetingRequest struct {
+	UserID    string `json:"user_id"`
+	MeetingID string `json:"meeting_id"`
+}

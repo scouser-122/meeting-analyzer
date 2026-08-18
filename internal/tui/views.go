@@ -18,6 +18,8 @@ func (m Model) View() string {
 		return m.viewStatusForm()
 	case ScreenTranscription:
 		return m.viewTranscriptionForm()
+	case ScreenRetry:
+		return m.viewRetryForm()
 	case ScreenDelete:
 		return m.viewDeleteForm()
 	case ScreenFind:
@@ -110,6 +112,27 @@ func (m Model) viewTranscriptionForm() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Получение Транскрипции по Встрече"))
+	sb.WriteString("\n\n")
+	sb.WriteString(inputLabelStyle.Render("ID встречи:"))
+	sb.WriteString("\n")
+	sb.WriteString(m.MeetingIDInput.View())
+	sb.WriteString(m.viewFormHelp())
+
+	if m.Error != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(errorStyle.Render(fmt.Sprintf("Ошибка: %s", m.Error)))
+	}
+
+	return sb.String()
+}
+
+func (m Model) viewRetryForm() string {
+	if m.Loading {
+		return m.viewLoading("Постановка встречи в очередь на повторную обработку...")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("Повторная Обработка Встречи"))
 	sb.WriteString("\n\n")
 	sb.WriteString(inputLabelStyle.Render("ID встречи:"))
 	sb.WriteString("\n")

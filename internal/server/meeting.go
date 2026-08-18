@@ -265,6 +265,82 @@ func (h *MeetingsHandler) HandleTranscription(res http.ResponseWriter, req *http
 	res.Write(buf.Bytes())
 }
 
+// HandleRetry processes meeting retry request
+func (h *MeetingsHandler) HandleRetry(res http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		res.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	logger := logger.GetSlogLoggerFromContext(req.Context())
+
+	res.Header().Set("Content-Type", "application/json")
+
+	bodyBuf, err := io.ReadAll(req.Body)
+	if err != nil {
+		logger.Error("cannot read request body", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
+		return
+	}
+
+	var request models.RetryMeetingRequest
+	if err = json.Unmarshal(bodyBuf, &request); err != nil {
+		logger.Error("cannot decode request json body", "err", err)
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("invalid JSON body"))
+		return
+	}
+
+	if request.MeetingID == "" {
+		logger.Error("missing 'meeting_id' parameter")
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("missing 'meeting_id' parameter"))
+		return
+	}
+
+	if request.UserID == "" {
+		logger.Error("missing 'user_id' parameter")
+		res.WriteHeader(http.StatusBadRequest)
+		res.Write(models.NewErrorResponseBuffer("missing 'user_id' parameter"))
+		return
+	}
+
+	meeting, err := h.meetingsService.GetByID(req.Context(), request.MeetingID)
+	if err != nil {
+		handleServiceError(err, res)
+		return
+	}
+
+	if meeting.UserID != request.UserID {
+		logger.Error("meeting data belongs to another user")
+		res.WriteHeader(http.StatusForbidden)
+		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		return
+	}
+
+	err = h.meetingProcessor.RetryMeeting(req.Context(), request.MeetingID)
+	if err != nil {
+		logger.Error("can't retry meeting processing", "err", err)
+		var customErr *models.CustomErr
+		if errors.As(err, &customErr) {
+			models.WriteResponseError(customErr, res)
+			return
+		}
+		if err.Error() == "processing queue is full" {
+			res.WriteHeader(http.StatusTooManyRequests)
+			res.Write(models.NewErrorResponseBuffer("can't retry meeting. try again later"))
+			return
+		}
+		res.WriteHeader(http.StatusConflict)
+		res.Write(models.NewErrorResponseBuffer(err.Error()))
+		return
+	}
+
+	logger.Info("meeting retry successfully scheduled", slog.String("meetingID", request.MeetingID))
+	res.WriteHeader(http.StatusAccepted)
+	res.Write(models.NewSuccessResponseBuffer("Обработка встречи поставлена в очередь на повторную обработку"))
+}
+
 // HandleDelete processes meeting delete request
 func (h *MeetingsHandler) HandleDelete(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodDelete {

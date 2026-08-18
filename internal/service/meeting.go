@@ -199,6 +199,9 @@ func (s *MeetingsService) DeleteMeetingAudioFile(
 	ctx context.Context,
 	meeting *model.Meeting,
 ) error {
+	if meeting.FilePath == nil || *meeting.FilePath == "" {
+		return nil
+	}
 	err := os.RemoveAll(*meeting.FilePath)
 	if err != nil {
 		return errors.WithStack(err)

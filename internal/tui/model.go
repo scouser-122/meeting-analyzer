@@ -18,6 +18,7 @@ const (
 	ScreenList
 	ScreenStatus
 	ScreenTranscription
+	ScreenRetry
 	ScreenDelete
 	ScreenFind
 	ScreenChat
@@ -37,6 +38,7 @@ var MenuItems = []MenuItem{
 	{Label: "Список встреч", Description: "Получить список встреч пользователя", Screen: ScreenList},
 	{Label: "Статус по встрече", Description: "Получить статус обработки встречи по ID", Screen: ScreenStatus},
 	{Label: "Транскрипция встречи", Description: "Получить транскрипцию встречи по ID", Screen: ScreenTranscription},
+	{Label: "Повторить обработку", Description: "Повторить обработку встречи по ID", Screen: ScreenRetry},
 	{Label: "Удалить встречу", Description: "Удалить встречу по ID", Screen: ScreenDelete},
 	{Label: "Поиск по фразе", Description: "Поиск встреч по ключевым словам", Screen: ScreenFind},
 	{Label: "Чат", Description: "Задайте вопрос по теме загруженных встреч", Screen: ScreenChat},

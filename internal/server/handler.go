@@ -46,6 +46,7 @@ func InitializeHandlers(
 	handlers = append(handlers, Handler{"/api/meetings/list", meetingsHandler.HandleList})
 	handlers = append(handlers, Handler{"/api/meetings/status", meetingsHandler.HandleStatus})
 	handlers = append(handlers, Handler{"/api/meetings/transcription", meetingsHandler.HandleTranscription})
+	handlers = append(handlers, Handler{"/api/meetings/retry", meetingsHandler.HandleRetry})
 	handlers = append(handlers, Handler{"/api/meetings/find", meetingsHandler.HandleFind})
 	handlers = append(handlers, Handler{"/api/meetings/delete", meetingsHandler.HandleDelete})
 

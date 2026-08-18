@@ -43,6 +43,7 @@ func (b *TelegramBot) Init() error {
 	bot.Handle("/list", b.handleList)
 	bot.Handle("/status", b.handleStatus)
 	bot.Handle("/transcription", b.handleTranscription)
+	bot.Handle("/retry", b.handleRetry)
 	bot.Handle("/delete", b.handleDelete)
 	bot.Handle("/find", b.handleFind)
 
@@ -169,6 +170,18 @@ func (b *TelegramBot) handleTranscription(c tele.Context) error {
 		return c.Send(fmt.Sprintf("Ошибка получения транскрипции: %v", err))
 	}
 	return c.Send(resp.Text)
+}
+
+func (b *TelegramBot) handleRetry(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send("Укажите ID встречи: /retry <meeting_id>")
+	}
+	userID := UserIDFromTelegramID(c.Sender().ID)
+	if err := b.client.Retry(userID, args[0]); err != nil {
+		return c.Send(fmt.Sprintf("Ошибка повторной обработки встречи: %v", err))
+	}
+	return c.Send("Встреча поставлена в очередь на повторную обработку.")
 }
 
 func (b *TelegramBot) handleDelete(c tele.Context) error {

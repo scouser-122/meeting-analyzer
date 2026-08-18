@@ -172,6 +172,26 @@ func (c *TelegramClient) Transcription(userID, meetingID string) (*models.Transc
 	return &result, nil
 }
 
+// Retry schedules reprocessing of the specified meeting.
+func (c *TelegramClient) Retry(userID, meetingID string) error {
+	body := map[string]string{
+		"user_id":    userID,
+		"meeting_id": meetingID,
+	}
+	resp, err := c.doJSON("POST", "/api/meetings/retry", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		var errResp models.CommonResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("%s", errResp.Message)
+	}
+	return nil
+}
+
 // Delete removes the specified meeting through the backend API.
 func (c *TelegramClient) Delete(userID, meetingID string) error {
 	url := fmt.Sprintf("%s/api/meetings/delete?user_id=%s&meeting_id=%s", c.BaseURL, userID, meetingID)

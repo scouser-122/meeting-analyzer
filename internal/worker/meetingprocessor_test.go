@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -228,7 +229,7 @@ func (f *fakeTranscriptionRepository) GetByMeetingID(ctx context.Context, meetin
 	defer f.mu.Unlock()
 	t, ok := f.data[meetingID]
 	if !ok {
-		return nil, fmt.Errorf("transcription not found")
+		return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
 	}
 	c := *t
 	return &c, nil
@@ -707,5 +708,131 @@ func TestMeetingProcessor_ConcurrentWorkersIsRaceFree(t *testing.T) {
 		if !ok || status != model.TaskStatusCompleted {
 			t.Errorf("meeting %s: status = %q (ok=%v), want %q", meeting.ID, status, ok, model.TaskStatusCompleted)
 		}
+	}
+}
+
+// failingAudioProcessor fails transcription on the first call for each meeting.
+type failingAudioProcessor struct {
+	mu       sync.Mutex
+	attempts map[string]int
+}
+
+func (f *failingAudioProcessor) TranscribeAudio(ctx context.Context, meeting *model.Meeting) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attempts[meeting.ID]++
+	if f.attempts[meeting.ID] == 1 {
+		return "", fmt.Errorf("transcription failed")
+	}
+	return "transcription for " + meeting.ID, nil
+}
+
+func newRetryTestState(t *testing.T) *fakeState {
+	t.Helper()
+
+	limit := 1
+	timeout := 30
+	uploadDir := t.TempDir()
+	maxUpload := int64(10 << 20)
+	serverConfig := &config.ServerConfig{
+		ProcessorLimit:   &limit,
+		ProcessorTimeout: &timeout,
+		UploadFileDir:    &uploadDir,
+		MaxUploadSize:    &maxUpload,
+	}
+
+	meetings := newFakeMeetingRepository()
+	tasks := newFakeTaskRepository()
+	transcriptions := newFakeTranscriptionRepository()
+	summaries := newFakeSummaryRepository()
+	users := newFakeUserRepository()
+	repoUtils := fakeRepoUtils{}
+
+	usersService := service.NewUsersService(users)
+	tasksService := service.NewTasksService(tasks, repoUtils)
+	transcriptionService := service.NewTranscriptionService(transcriptions, repoUtils)
+	summaryService := service.NewSummaryService(summaries, repoUtils)
+	meetingsService := service.NewMeetingsService(meetings, repoUtils, usersService, tasksService, transcriptionService, summaryService, serverConfig)
+
+	processor := NewMeetingProcessorWithBuffer(
+		meetingsService,
+		tasksService,
+		transcriptionService,
+		summaryService,
+		repoUtils,
+		&failingAudioProcessor{attempts: make(map[string]int)},
+		fakeLLMClient{},
+		serverConfig,
+		128,
+	)
+
+	return &fakeState{
+		processor:      processor,
+		meetings:       meetings,
+		tasks:          tasks,
+		transcriptions: transcriptions,
+		summaries:      summaries,
+	}
+}
+
+// TestProcessMeetingInWorker_RetriesFromFailedStatus verifies that a failed meeting
+// keeps its audio file and can be retried successfully.
+func TestProcessMeetingInWorker_RetriesFromFailedStatus(t *testing.T) {
+	state := newRetryTestState(t)
+	dir := t.TempDir()
+
+	meeting := newTestMeeting(t, dir, 0)
+	seedMeetingAndTask(t, state, meeting)
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	status, ok := state.tasks.statusByMeeting(meeting.ID)
+	if !ok || status != model.TaskStatusFailed {
+		t.Fatalf("expected status failed, got %q (ok=%v)", status, ok)
+	}
+
+	if _, err := os.Stat(*meeting.FilePath); err != nil {
+		t.Fatalf("audio file should be preserved after failure: %v", err)
+	}
+
+	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
+	if err != nil {
+		t.Fatalf("retry meeting: %v", err)
+	}
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	status, ok = state.tasks.statusByMeeting(meeting.ID)
+	if !ok || status != model.TaskStatusCompleted {
+		t.Errorf("expected status completed after retry, got %q (ok=%v)", status, ok)
+	}
+
+	updatedMeeting, err := state.meetings.GetByID(context.Background(), meeting.ID)
+	if err != nil {
+		t.Fatalf("get updated meeting: %v", err)
+	}
+	if updatedMeeting.FilePath != nil && *updatedMeeting.FilePath != "" {
+		t.Errorf("audio file path should be cleared after successful completion")
+	}
+}
+
+// TestRetryMeeting_QueueFull verifies that RetryMeeting returns an error when the queue is full.
+func TestRetryMeeting_QueueFull(t *testing.T) {
+	state := newRetryTestState(t)
+	dir := t.TempDir()
+
+	meeting := newTestMeeting(t, dir, 0)
+	seedMeetingAndTask(t, state, meeting)
+
+	state.processor.processMeetingInWorker(0, meeting)
+
+	// Fill the channel to capacity without starting workers.
+	for i := 0; i < 128; i++ {
+		state.processor.ProcessMeeting(meeting)
+	}
+
+	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
+	if err == nil || err.Error() != "processing queue is full" {
+		t.Errorf("expected queue full error, got %v", err)
 	}
 }
