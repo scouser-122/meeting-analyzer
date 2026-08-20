@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,6 +52,8 @@ func (b *TelegramBot) Init() error {
 
 	bot.Handle(tele.OnVoice, b.handleMedia)
 
+	bot.Handle(tele.OnDocument, b.handleMedia)
+
 	bot.Handle(tele.OnText, b.handleChat)
 
 	b.bot = bot
@@ -70,20 +73,29 @@ func (b *TelegramBot) handleStart(c tele.Context) error {
 	if err != nil {
 		return c.Send(fmt.Sprintf("Ошибка регистрации: %v", err))
 	}
-	return c.Send("Готов к обработке команд\nЗагрузите аудио файл с записью встречи для обработки, или выберите любую из команд, или задайте вопрос в чате.")
+	return c.Send("Готов к обработке команд\nЗагрузите аудио файл с записью встречи или текстовый файл .txt с готовой транскрипцией для обработки, или выберите любую из команд, или задайте вопрос в чате.")
 }
 
 func (b *TelegramBot) handleMedia(c tele.Context) error {
 	var media tele.File
 	var caption string
+	var fileName string
 
-	if c.Message().Audio != nil {
-		media = c.Message().Audio.File
-		caption = c.Message().Caption
-	} else if c.Message().Voice != nil {
-		media = c.Message().Voice.File
-		caption = c.Message().Caption
-	} else {
+	msg := c.Message()
+	switch {
+	case msg.Audio != nil:
+		media = msg.Audio.File
+		caption = msg.Caption
+		fileName = msg.Audio.FileName
+	case msg.Voice != nil:
+		media = msg.Voice.File
+		caption = msg.Caption
+		fileName = "voice.ogg"
+	case msg.Document != nil:
+		media = msg.Document.File
+		caption = msg.Caption
+		fileName = msg.Document.FileName
+	default:
 		return c.Send("Не удалось определить медиафайл.")
 	}
 
@@ -91,16 +103,22 @@ func (b *TelegramBot) handleMedia(c tele.Context) error {
 		caption = "Встреча без названия"
 	}
 
+	if fileName == "" {
+		fileName = "file"
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	isAudio := msg.Audio != nil || msg.Voice != nil
+	isText := ext == ".txt"
+	if !isAudio && !isText {
+		return c.Send("Поддерживаются только аудио-файлы и текстовые файлы с расширением .txt.")
+	}
+
 	reader, err := c.Bot().File(&media)
 	if err != nil {
 		return c.Send(fmt.Sprintf("Ошибка загрузки файла из Telegram: %v", err))
 	}
 	defer reader.Close()
-
-	fileName := "audio"
-	if c.Message().Audio != nil && c.Message().Audio.FileName != "" {
-		fileName = c.Message().Audio.FileName
-	}
 
 	userID := UserIDFromTelegramID(c.Sender().ID)
 	resp, err := b.client.UploadMeeting(userID, caption, fileName, reader)

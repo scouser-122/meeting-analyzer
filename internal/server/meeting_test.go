@@ -349,40 +349,16 @@ var handleLoadTests = []struct {
 	{
 		name:        "Unsupported Media Type - invalid file extension",
 		metadata:    `{"user_id":"user123","name":"meeting"}`,
-		filename:    "meeting.txt",
+		filename:    "meeting.docx",
 		fileContent: []byte("not an audio file"),
 		setupMock: func(mock pgxmock.PgxPoolIface) {
-			mock.ExpectQuery("SELECT \\* FROM users").
-				WithArgs("user123").
-				WillReturnRows(
-					pgxmock.NewRows([]string{"id", "created_at"}).
-						AddRow("user123", time.Now()),
-				)
-			mock.ExpectBegin()
-
-			meetingID := uuid.New().String()
-			mock.ExpectExec("INSERT INTO meetings").
-				WithArgs(pgxmock.AnyArg(), "user123", pgxmock.AnyArg(), pgxmock.AnyArg()).
-				WillReturnResult(pgxmock.NewResult("INSERT", 1))
-			mock.ExpectQuery("SELECT \\* FROM meetings").
-				WithArgs(pgxmock.AnyArg()).
-				WillReturnRows(
-					pgxmock.NewRows([]string{
-						"id", "user_id", "meeting_name", "file_path",
-						"original_file_name", "created_at", "updated_at",
-					}).AddRow(
-						meetingID, "user123", nil, nil, nil, time.Now(), time.Now(),
-					),
-				)
-
-			// Транзакция откатывается из-за ошибки сохранения файла
-			mock.ExpectRollback()
+			// Никаких обращений к БД не ожидается
 		},
 		processor: func(t *testing.T, mockDB pgxmock.PgxPoolIface, uploadDir string) interface{ ProcessMeeting(*model.Meeting) bool } {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusUnsupportedMediaType,
-		expectedBody:   `{"status":"error","message":"unsupported file type: .txt"}`,
+		expectedBody:   `{"status":"error","message":"unsupported file type: .docx"}`,
 	},
 	{
 		name:        "Internal Server Error - database failure during meeting creation",

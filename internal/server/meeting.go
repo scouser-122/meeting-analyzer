@@ -8,7 +8,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/scouser-122/meeting-analyzer/internal/config"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
@@ -94,7 +96,24 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 		}
 	}
 
-	meeting, err := h.meetingsService.CreateFromAudioFile(req.Context(), &meetingData, file, header)
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+
+	var meeting *model.Meeting
+	var successMessage string
+	switch {
+	case isAudioExtension(ext):
+		meeting, err = h.meetingsService.CreateFromAudioFile(req.Context(), &meetingData, file, header)
+		successMessage = "Файл с записью встречи успешно загружен и запущена его обработка"
+	case isTextExtension(ext):
+		meeting, err = h.meetingsService.CreateFromTranscriptionFile(req.Context(), &meetingData, file, header)
+		successMessage = "Файл с транскрипцией успешно загружен и запущена суммаризация"
+	default:
+		logger.Error("unsupported file type", "ext", ext)
+		res.WriteHeader(http.StatusUnsupportedMediaType)
+		res.Write(models.NewErrorResponseBuffer("unsupported file type: " + ext))
+		return
+	}
+
 	if err != nil {
 		handleServiceError(err, res)
 		return
@@ -109,7 +128,19 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 
 	logger.Info("meeting file upload succesfully, and sent to processing queue", slog.String("meetingID", meeting.ID))
 	res.WriteHeader(http.StatusAccepted)
-	res.Write(models.NewSuccessResponseBufferWithData("Файл с записью встречи успешно загружен и запущена его обработка", meeting))
+	res.Write(models.NewSuccessResponseBufferWithData(successMessage, meeting))
+}
+
+func isAudioExtension(ext string) bool {
+	switch ext {
+	case ".mp3", ".wav", ".m4a", ".ogg":
+		return true
+	}
+	return false
+}
+
+func isTextExtension(ext string) bool {
+	return ext == ".txt"
 }
 
 // HandleList processes meetings list request
