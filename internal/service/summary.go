@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/scouser-122/meeting-analyzer/internal/domain/model"
 	"github.com/scouser-122/meeting-analyzer/internal/domain/repository"
+	"github.com/scouser-122/meeting-analyzer/internal/models"
 )
 
 // SummaryService service to work with transcription summary
@@ -33,7 +35,8 @@ func (s *SummaryService) AddNewSummary(ctx context.Context, summary *model.Summa
 func (s *SummaryService) GetSummary(ctx context.Context, meetingID string) (*string, error) {
 	summary, err := s.summaryRepo.GetByMeetingID(ctx, meetingID)
 	if err != nil {
-		if err.Error() == "summary not found" {
+		var customErr *models.CustomErr
+		if errors.As(err, &customErr) && customErr.Code == models.ErrCodeSummaryNotFound {
 			return nil, nil
 		}
 		return nil, err

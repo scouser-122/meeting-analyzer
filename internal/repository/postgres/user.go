@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -66,8 +65,7 @@ func (s *PostgresUserRepository) Create(ctx context.Context, id string) (*model.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			if pgErr.Code == pgerrcode.UniqueViolation {
-				err = &models.CustomErr{Message: "user id busy", HTTPStatus: http.StatusConflict}
-				return nil, errors.WithStack(err)
+				return nil, models.NewCustomErr(models.ErrCodeUserAlreadyExists, "Пользователь с таким идентификатором уже зарегистрирован", http.StatusConflict, err)
 			}
 		}
 		return nil, errors.WithStack(err)
@@ -82,7 +80,7 @@ func (s *PostgresUserRepository) GetByID(ctx context.Context, id string) (*model
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			logger.Error("user not found", "id", id)
-			return nil, fmt.Errorf("user not found")
+			return nil, models.NewCustomErr(models.ErrCodeUserNotFound, "Пользователь не найден", http.StatusNotFound, err)
 		}
 		return nil, errors.WithStack(err)
 	}

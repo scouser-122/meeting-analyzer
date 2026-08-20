@@ -3,8 +3,8 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -178,11 +178,8 @@ func (m *MeetingProcessor) processMeetingInWorker(workerID int, meeting *model.M
 		transcription, err = m.transcriptionService.GetByMeetingID(ctx, meeting.ID)
 		if err != nil {
 			var customErr *models.CustomErr
-			if errors.As(err, &customErr) {
-				if customErr.Message != "transcription not found" {
-					pLogger.Error("processor can't get transcription for failed task", "err", err)
-					return
-				}
+			if errors.As(err, &customErr) && customErr.Code == models.ErrCodeTranscriptionNotFound {
+				// no transcription yet, will transcribe from audio
 			} else {
 				pLogger.Error("processor can't get transcription for failed task", "err", err)
 				return
@@ -236,11 +233,11 @@ func (m *MeetingProcessor) RetryMeeting(ctx context.Context, meetingID string) e
 	case model.TaskStatusFailed, model.TaskStatusTranscribed, model.TaskStatusSummarized:
 		// allowed to retry
 	case model.TaskStatusProcessing:
-		return fmt.Errorf("meeting is already processing")
+		return models.NewCustomErr(models.ErrCodeMeetingAlreadyProcessing, "Встреча уже обрабатывается", http.StatusConflict, nil)
 	case model.TaskStatusCompleted:
-		return fmt.Errorf("meeting already completed")
+		return models.NewCustomErr(models.ErrCodeMeetingAlreadyCompleted, "Обработка встречи уже завершена", http.StatusConflict, nil)
 	default:
-		return fmt.Errorf("meeting can't be retried from status %s", task.Status)
+		return models.NewCustomErrf(models.ErrCodeMeetingCannotRetry, http.StatusConflict, nil, "Нельзя повторить обработку встречи в статусе %s", task.Status)
 	}
 
 	meeting, err := m.meetingService.GetByID(ctx, meetingID)
@@ -249,7 +246,7 @@ func (m *MeetingProcessor) RetryMeeting(ctx context.Context, meetingID string) e
 	}
 
 	if !m.ProcessMeeting(meeting) {
-		return fmt.Errorf("processing queue is full")
+		return models.NewCustomErr(models.ErrCodeQueueFull, "Сервер перегружен. Попробуйте повторить позже", http.StatusTooManyRequests, nil)
 	}
 
 	return nil

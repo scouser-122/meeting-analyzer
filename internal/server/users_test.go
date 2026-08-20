@@ -46,7 +46,7 @@ var usersHandlerTests = []struct {
 				)
 		},
 		expectedStatus: http.StatusOK,
-		expectedBody:   `{"status":"ok","message":"user successfully registered"}`,
+		expectedBody:   `{"status":"ok","message":"Пользователь успешно зарегистрирован"}`,
 	},
 	{
 		name:        "Bad Request - empty user ID in service validation",
@@ -56,7 +56,7 @@ var usersHandlerTests = []struct {
 			// No DB interaction expected due to validation
 		},
 		expectedStatus: http.StatusBadRequest,
-		expectedBody:   `{"status":"error","message":"user id absent"}`,
+		expectedBody:   `{"status":"error","message":"Не указан идентификатор пользователя"}`,
 	},
 	{
 		name:        "Bad Request - missing id field in JSON (empty after unmarshal)",
@@ -66,7 +66,7 @@ var usersHandlerTests = []struct {
 			// No DB interaction expected - unmarshal creates empty user.ID
 		},
 		expectedStatus: http.StatusBadRequest,
-		expectedBody:   `{"status":"error","message":"user id absent"}`,
+		expectedBody:   `{"status":"error","message":"Не указан идентификатор пользователя"}`,
 	},
 	{
 		name:        "Conflict - user ID already exists",
@@ -85,7 +85,7 @@ var usersHandlerTests = []struct {
 				WillReturnError(pgErr)
 		},
 		expectedStatus: http.StatusConflict,
-		expectedBody:   `{"status":"error","message":"user id busy"}`,
+		expectedBody:   `{"status":"error","message":"Пользователь с таким идентификатором уже зарегистрирован"}`,
 	},
 	{
 		name:        "Internal Server Error - general database error",
@@ -99,7 +99,7 @@ var usersHandlerTests = []struct {
 				WillReturnError(fmt.Errorf("database connection lost"))
 		},
 		expectedStatus: http.StatusInternalServerError,
-		expectedBody:   `{"status":"error","message":"unexpected error happen"}`,
+		expectedBody:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 	},
 }
 

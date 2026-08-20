@@ -75,10 +75,7 @@ func (s *MeetingsService) CreateFromAudioFile(
 	header *multipart.FileHeader,
 ) (*model.Meeting, error) {
 	if meeting.UserID == "" {
-		return nil, &models.CustomErr{
-			Message:    "user id not specified",
-			HTTPStatus: http.StatusBadRequest,
-		}
+		return nil, models.NewCustomErr(models.ErrCodeUserIDMissing, "Не указан идентификатор пользователя", http.StatusBadRequest, nil)
 	}
 
 	_, err := s.usersService.GetByID(ctx, meeting.UserID)
@@ -135,10 +132,7 @@ func (s *MeetingsService) CreateFromTranscriptionFile(
 	header *multipart.FileHeader,
 ) (*model.Meeting, error) {
 	if meeting.UserID == "" {
-		return nil, &models.CustomErr{
-			Message:    "user id not specified",
-			HTTPStatus: http.StatusBadRequest,
-		}
+		return nil, models.NewCustomErr(models.ErrCodeUserIDMissing, "Не указан идентификатор пользователя", http.StatusBadRequest, nil)
 	}
 
 	_, err := s.usersService.GetByID(ctx, meeting.UserID)
@@ -153,10 +147,7 @@ func (s *MeetingsService) CreateFromTranscriptionFile(
 
 	transcriptionID, err := newFileID()
 	if err != nil {
-		return nil, &models.CustomErr{
-			Message:    "internal error",
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return nil, models.NewCustomErr(models.ErrCodeInternal, "Произошла внутренняя ошибка. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 
 	tx, err := s.repositoryUtils.CreateTransaction(ctx)
@@ -221,19 +212,13 @@ func (s *MeetingsService) saveMeetingFile(
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if !allowedAudioExts[ext] {
 		logger.Error("unsupported file type", "ext", ext)
-		return &models.CustomErr{
-			Message:    fmt.Sprintf("unsupported file type: %s", ext),
-			HTTPStatus: http.StatusUnsupportedMediaType,
-		}
+		return models.NewCustomErrf(models.ErrCodeUnsupportedFileType, http.StatusUnsupportedMediaType, nil, "Неподдерживаемый формат файла: %s. Загрузите аудиофайл (.mp3, .wav, .m4a, .ogg) или текстовую транскрипцию (.txt)", ext)
 	}
 
 	fileID, err := newFileID()
 	if err != nil {
 		logger.Error("fileID generation failed", "err", err)
-		return &models.CustomErr{
-			Message:    "internal error",
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeInternal, "Произошла внутренняя ошибка. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 
 	key := s.buildFileKey(meeting, fileID, ext)
@@ -245,10 +230,7 @@ func (s *MeetingsService) saveMeetingFile(
 		if errors.As(err, &customErr) {
 			return err
 		}
-		return &models.CustomErr{
-			Message:    "upload failed",
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeFileUploadFailed, "Не удалось загрузить файл. Попробуйте ещё раз", http.StatusInternalServerError, err)
 	}
 
 	meeting.FilePath = &key
@@ -272,25 +254,16 @@ func newFileID() (string, error) {
 func (s *MeetingsService) readTranscriptionFile(file multipart.File, header *multipart.FileHeader) (string, error) {
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if !allowedTextExts[ext] {
-		return "", &models.CustomErr{
-			Message:    fmt.Sprintf("unsupported file type: %s", ext),
-			HTTPStatus: http.StatusUnsupportedMediaType,
-		}
+		return "", models.NewCustomErrf(models.ErrCodeUnsupportedFileType, http.StatusUnsupportedMediaType, nil, "Неподдерживаемый формат файла: %s. Загрузите аудиофайл (.mp3, .wav, .m4a, .ogg) или текстовую транскрипцию (.txt)", ext)
 	}
 
 	if header.Size == 0 {
-		return "", &models.CustomErr{
-			Message:    "transcription file is empty",
-			HTTPStatus: http.StatusBadRequest,
-		}
+		return "", models.NewCustomErr(models.ErrCodeTranscriptionFileEmpty, "Загруженный текстовый файл пуст", http.StatusBadRequest, nil)
 	}
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		return "", &models.CustomErr{
-			Message:    "failed to read transcription file",
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return "", models.NewCustomErr(models.ErrCodeFileOpenFailed, "Не удалось прочитать текстовый файл. Попробуйте ещё раз", http.StatusInternalServerError, err)
 	}
 	return string(data), nil
 }
@@ -343,10 +316,7 @@ func (s *MeetingsService) Delete(ctx context.Context, userID, meetingID string) 
 	}
 
 	if meeting.UserID != userID {
-		return &models.CustomErr{
-			Message:    "meeting data belongs to another user",
-			HTTPStatus: http.StatusForbidden,
-		}
+		return models.NewCustomErr(models.ErrCodeAccessDenied, "У вас нет доступа к этой встрече", http.StatusForbidden, nil)
 	}
 
 	if meeting.FilePath != nil && *meeting.FilePath != "" {

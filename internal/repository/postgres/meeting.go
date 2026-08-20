@@ -62,7 +62,7 @@ func (r *PostgresMeetingRepository) GetByID(ctx context.Context, id string) (*mo
 	meeting, err := r.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &models.CustomErr{Message: "meeting not found", HTTPStatus: http.StatusNotFound}
+			return nil, models.NewCustomErr(models.ErrCodeMeetingNotFound, "Встреча не найдена", http.StatusNotFound, err)
 		}
 		return nil, errors.WithStack(err)
 	}

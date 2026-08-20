@@ -79,7 +79,7 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 	} else {
 		transcriptions, err := h.transcriptionService.FindByKeyWords(req.Context(), request.UserID, intent.Keywords, intent.Topic)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 
@@ -90,7 +90,7 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 			for _, t := range transcriptions {
 				summary, err = h.summaryService.GetSummary(req.Context(), t.MeetingID)
 				if err != nil {
-					handleServiceError(err, res)
+					handleServiceError(err, res, logger)
 					return
 				}
 				if summary == nil {
@@ -98,7 +98,7 @@ func (h *ChatHandler) HandleChat(res http.ResponseWriter, req *http.Request) {
 				}
 				meeting, err = h.meetingsService.GetByID(req.Context(), t.MeetingID)
 				if err != nil {
-					handleServiceError(err, res)
+					handleServiceError(err, res, logger)
 					return
 				}
 				transcription = &t.Text

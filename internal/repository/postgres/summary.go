@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -63,7 +63,7 @@ func (r *PostgresSummaryRepository) GetByMeetingID(ctx context.Context, meetingI
 	summary, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("summary not found")
+			return nil, models.NewCustomErr(models.ErrCodeSummaryNotFound, "Краткая выжимка не найдена", http.StatusNotFound, err)
 		}
 		return nil, errors.WithStack(err)
 	}

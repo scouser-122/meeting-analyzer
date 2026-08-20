@@ -50,11 +50,11 @@ func (h *UsersHandler) HandleStart(res http.ResponseWriter, req *http.Request) {
 
 	err = h.usersService.Register(req.Context(), user.ID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
-	successMessage := "user successfully registered"
+	successMessage := "Пользователь успешно зарегистрирован"
 	logger.Info(successMessage, slog.String("id", user.ID))
 	res.WriteHeader(http.StatusOK)
 	res.Write(models.NewSuccessResponseBuffer(successMessage))

@@ -26,7 +26,7 @@ func NewUsersService(
 // Register runs registration process for specified user
 func (s *UsersService) Register(ctx context.Context, id string) error {
 	if id == "" {
-		return &models.CustomErr{Message: "user id absent", HTTPStatus: http.StatusBadRequest}
+		return models.NewCustomErr(models.ErrCodeUserIDMissing, "Не указан идентификатор пользователя", http.StatusBadRequest, nil)
 	}
 	_, err := s.usersRepo.Create(ctx, id)
 	if err != nil {

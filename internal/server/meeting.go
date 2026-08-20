@@ -68,12 +68,12 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 		if errors.Is(err, io.EOF) {
 			logger.Error("file too large", "err", err)
 			res.WriteHeader(http.StatusRequestEntityTooLarge)
-			res.Write(models.NewErrorResponseBuffer("file too large"))
+			res.Write(models.NewErrorResponseBuffer("Файл слишком большой. Уменьшите размер и попробуйте снова"))
 			return
 		}
 		logger.Error("invalid multipart form", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("invalid multipart form"))
+		res.Write(models.NewErrorResponseBuffer("Некорректный формат запроса. Проверьте файл и повторите попытку"))
 		return
 	}
 
@@ -81,7 +81,7 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	if err != nil {
 		logger.Error("missing 'file' field", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("missing 'file' field"))
+		res.Write(models.NewErrorResponseBuffer("В запросе отсутствует файл"))
 		return
 	}
 	defer file.Close()
@@ -91,7 +91,7 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 		if err = json.Unmarshal([]byte(raw), &meetingData); err != nil {
 			logger.Error("invalid metadata JSON", "err", err)
 			res.WriteHeader(http.StatusBadRequest)
-			res.Write(models.NewErrorResponseBuffer("invalid metadata JSON"))
+			res.Write(models.NewErrorResponseBuffer("Некорректные метаданные в запросе"))
 			return
 		}
 	}
@@ -110,19 +110,19 @@ func (h *MeetingsHandler) HandleLoad(res http.ResponseWriter, req *http.Request)
 	default:
 		logger.Error("unsupported file type", "ext", ext)
 		res.WriteHeader(http.StatusUnsupportedMediaType)
-		res.Write(models.NewErrorResponseBuffer("unsupported file type: " + ext))
+		res.Write(models.NewErrorResponseBuffer("Неподдерживаемый формат файла. Загрузите аудиофайл (.mp3, .wav, .m4a, .ogg) или текстовую транскрипцию (.txt)"))
 		return
 	}
 
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
 	if !h.meetingProcessor.ProcessMeeting(meeting) {
 		logger.Error("processing channel full, task rejected")
 		res.WriteHeader(http.StatusTooManyRequests)
-		res.Write(models.NewErrorResponseBuffer("can't upload meeting. try again later"))
+		res.Write(models.NewErrorResponseBuffer("Сервер перегружен. Попробуйте загрузить файл позже"))
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 
 	meetings, err := h.meetingsService.GetAllByUserID(req.Context(), userID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
@@ -166,12 +166,12 @@ func (h *MeetingsHandler) HandleList(res http.ResponseWriter, req *http.Request)
 		meeting := meetings[i]
 		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		meetingsData[i] = models.MeetingResponseData{
@@ -210,20 +210,20 @@ func (h *MeetingsHandler) HandleStatus(res http.ResponseWriter, req *http.Reques
 	meetingID := req.URL.Query().Get("meeting_id")
 	meeting, err := h.meetingsService.GetByID(req.Context(), meetingID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
 	userID := req.URL.Query().Get("user_id")
 	if meeting.UserID != userID {
 		res.WriteHeader(http.StatusForbidden)
-		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		res.Write(models.NewErrorResponseBuffer("У вас нет доступа к этой встрече"))
 		return
 	}
 
 	task, err := h.tasksService.GetByMeetingID(req.Context(), meeting.ID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 	meetingData := models.MeetingResponseData{
@@ -262,20 +262,20 @@ func (h *MeetingsHandler) HandleTranscription(res http.ResponseWriter, req *http
 	meetingID := req.URL.Query().Get("meeting_id")
 	meeting, err := h.meetingsService.GetByID(req.Context(), meetingID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
 	userID := req.URL.Query().Get("user_id")
 	if meeting.UserID != userID {
 		res.WriteHeader(http.StatusForbidden)
-		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		res.Write(models.NewErrorResponseBuffer("У вас нет доступа к этой встрече"))
 		return
 	}
 
 	transcription, err := h.transcriptionService.GetByMeetingID(req.Context(), meeting.ID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 	meetingData := models.TranscriptionResponseData{
@@ -318,34 +318,34 @@ func (h *MeetingsHandler) HandleRetry(res http.ResponseWriter, req *http.Request
 	if err = json.Unmarshal(bodyBuf, &request); err != nil {
 		logger.Error("cannot decode request json body", "err", err)
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("invalid JSON body"))
+		res.Write(models.NewErrorResponseBuffer("Некорректное тело запроса"))
 		return
 	}
 
 	if request.MeetingID == "" {
 		logger.Error("missing 'meeting_id' parameter")
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("missing 'meeting_id' parameter"))
+		res.Write(models.NewErrorResponseBuffer("Не указан идентификатор встречи"))
 		return
 	}
 
 	if request.UserID == "" {
 		logger.Error("missing 'user_id' parameter")
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("missing 'user_id' parameter"))
+		res.Write(models.NewErrorResponseBuffer("Не указан идентификатор пользователя"))
 		return
 	}
 
 	meeting, err := h.meetingsService.GetByID(req.Context(), request.MeetingID)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
 	if meeting.UserID != request.UserID {
 		logger.Error("meeting data belongs to another user")
 		res.WriteHeader(http.StatusForbidden)
-		res.Write(models.NewErrorResponseBuffer("meeting data belongs to another user"))
+		res.Write(models.NewErrorResponseBuffer("У вас нет доступа к этой встрече"))
 		return
 	}
 
@@ -357,13 +357,8 @@ func (h *MeetingsHandler) HandleRetry(res http.ResponseWriter, req *http.Request
 			models.WriteResponseError(customErr, res)
 			return
 		}
-		if err.Error() == "processing queue is full" {
-			res.WriteHeader(http.StatusTooManyRequests)
-			res.Write(models.NewErrorResponseBuffer("can't retry meeting. try again later"))
-			return
-		}
-		res.WriteHeader(http.StatusConflict)
-		res.Write(models.NewErrorResponseBuffer(err.Error()))
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write(models.NewErrorResponseBuffer(models.UnexpectedErrorMessage))
 		return
 	}
 
@@ -385,20 +380,20 @@ func (h *MeetingsHandler) HandleDelete(res http.ResponseWriter, req *http.Reques
 	meetingID := req.URL.Query().Get("meeting_id")
 	if meetingID == "" {
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("missing 'meeting_id' parameter"))
+		res.Write(models.NewErrorResponseBuffer("Не указан идентификатор встречи"))
 		return
 	}
 
 	userID := req.URL.Query().Get("user_id")
 	if userID == "" {
 		res.WriteHeader(http.StatusBadRequest)
-		res.Write(models.NewErrorResponseBuffer("missing 'user_id' parameter"))
+		res.Write(models.NewErrorResponseBuffer("Не указан идентификатор пользователя"))
 		return
 	}
 
 	if err := h.meetingsService.Delete(req.Context(), userID, meetingID); err != nil {
 		logger.Error("can't delete meeting", "err", err)
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
@@ -435,13 +430,13 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 
 	meetings, err := h.meetingsService.FindByNameContains(req.Context(), request.UserID, request.KeyWords)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
 	transcriptions, err := h.transcriptionService.FindByTextContains(req.Context(), request.UserID, request.KeyWords)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
@@ -452,7 +447,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		var meeting *model.Meeting
 		meeting, err = h.meetingsService.GetByID(req.Context(), t.MeetingID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		meetings = append(meetings, meeting)
@@ -460,7 +455,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 
 	summaries, err := h.summaryService.FindByTextContains(req.Context(), request.UserID, request.KeyWords)
 	if err != nil {
-		handleServiceError(err, res)
+		handleServiceError(err, res, logger)
 		return
 	}
 
@@ -470,7 +465,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		}
 		meeting, err := h.meetingsService.GetByID(req.Context(), s.MeetingID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		meetings = append(meetings, meeting)
@@ -485,7 +480,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		meeting := meetings[i]
 		status, err := h.tasksService.GetStatus(req.Context(), meeting.ID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		if status != model.TaskStatusCompleted {
@@ -493,7 +488,7 @@ func (h *MeetingsHandler) HandleFind(res http.ResponseWriter, req *http.Request)
 		}
 		summary, err := h.summaryService.GetSummary(req.Context(), meeting.ID)
 		if err != nil {
-			handleServiceError(err, res)
+			handleServiceError(err, res, logger)
 			return
 		}
 		meetingsData = append(meetingsData, models.MeetingResponseData{

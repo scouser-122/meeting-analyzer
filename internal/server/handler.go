@@ -2,6 +2,8 @@ package server
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/scouser-122/meeting-analyzer/internal/client"
@@ -62,8 +64,9 @@ func InitializeHandlers(
 	return handlers
 }
 
-func handleServiceError(err error, res http.ResponseWriter) {
+func handleServiceError(err error, res http.ResponseWriter, logger *slog.Logger) {
 	var customErr *models.CustomErr
+	logger.Error(err.Error(), "stack", fmt.Sprintf("%+v", err))
 	if errors.As(err, &customErr) {
 		models.WriteResponseError(customErr, res)
 		return

@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -232,7 +233,7 @@ func (f *fakeTranscriptionRepository) GetByMeetingID(ctx context.Context, meetin
 	defer f.mu.Unlock()
 	t, ok := f.data[meetingID]
 	if !ok {
-		return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
+		return nil, models.NewCustomErr(models.ErrCodeTranscriptionNotFound, "Транскрипция не найдена", http.StatusNotFound, nil)
 	}
 	c := *t
 	return &c, nil
@@ -879,7 +880,12 @@ func TestRetryMeeting_QueueFull(t *testing.T) {
 	}
 
 	err := state.processor.RetryMeeting(context.Background(), meeting.ID)
-	if err == nil || err.Error() != "processing queue is full" {
-		t.Errorf("expected queue full error, got %v", err)
+	if err == nil {
+		t.Errorf("expected queue full error, got nil")
+	} else {
+		var customErr *models.CustomErr
+		if !errors.As(err, &customErr) || customErr.Code != models.ErrCodeQueueFull {
+			t.Errorf("expected queue full error code, got %v", err)
+		}
 	}
 }

@@ -300,7 +300,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusBadRequest,
-		expectedBody:   `{"status":"error","message":"missing 'file' field"}`,
+		expectedBody:   `{"status":"error","message":"В запросе отсутствует файл"}`,
 	},
 	{
 		name:        "Bad Request - invalid metadata JSON",
@@ -314,7 +314,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusBadRequest,
-		expectedBody:   `{"status":"error","message":"invalid metadata JSON"}`,
+		expectedBody:   `{"status":"error","message":"Некорректные метаданные в запросе"}`,
 	},
 	{
 		name:        "Bad Request - user id not specified",
@@ -328,7 +328,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusBadRequest,
-		expectedBody:   `{"status":"error","message":"user id not specified"}`,
+		expectedBody:   `{"status":"error","message":"Не указан идентификатор пользователя"}`,
 	},
 	{
 		name:        "Bad Request - user not found",
@@ -344,7 +344,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusInternalServerError,
-		expectedBody:   `{"status":"error","message":"unexpected error happen"}`,
+		expectedBody:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 	},
 	{
 		name:        "Unsupported Media Type - invalid file extension",
@@ -358,7 +358,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusUnsupportedMediaType,
-		expectedBody:   `{"status":"error","message":"unsupported file type: .docx"}`,
+		expectedBody:   `{"status":"error","message":"Неподдерживаемый формат файла. Загрузите аудиофайл (.mp3, .wav, .m4a, .ogg) или текстовую транскрипцию (.txt)"}`,
 	},
 	{
 		name:        "Internal Server Error - database failure during meeting creation",
@@ -382,7 +382,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorForTest(10)
 		},
 		expectedStatus: http.StatusInternalServerError,
-		expectedBody:   `{"status":"error","message":"unexpected error happen"}`,
+		expectedBody:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 	},
 	{
 		name:        "Too Many Requests - processing channel full",
@@ -436,7 +436,7 @@ var handleLoadTests = []struct {
 			return newMeetingProcessorWithBuffer(t, mockDB, uploadDir, 0)
 		},
 		expectedStatus: http.StatusTooManyRequests,
-		expectedBody:   `{"status":"error","message":"can't upload meeting. try again later"}`,
+		expectedBody:   `{"status":"error","message":"Сервер перегружен. Попробуйте загрузить файл позже"}`,
 	},
 }
 
@@ -767,7 +767,7 @@ var handleListTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -801,7 +801,7 @@ var handleListTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -842,7 +842,7 @@ var handleListTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 }
@@ -1010,7 +1010,7 @@ var handleStatusTests = []struct {
 		},
 		want: want{
 			status: http.StatusNotFound,
-			body:   `{"status":"error","message":"meeting not found"}`,
+			body:   `{"status":"error","message":"Встреча не найдена"}`,
 		},
 	},
 	{
@@ -1035,7 +1035,7 @@ var handleStatusTests = []struct {
 		},
 		want: want{
 			status: http.StatusForbidden,
-			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+			body:   `{"status":"error","message":"У вас нет доступа к этой встрече"}`,
 		},
 	},
 	{
@@ -1052,7 +1052,7 @@ var handleStatusTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -1082,7 +1082,7 @@ var handleStatusTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 }
@@ -1225,7 +1225,7 @@ var handleTranscriptionTests = []struct {
 		},
 		want: want{
 			status: http.StatusNotFound,
-			body:   `{"status":"error","message":"meeting not found"}`,
+			body:   `{"status":"error","message":"Встреча не найдена"}`,
 		},
 	},
 	{
@@ -1250,7 +1250,7 @@ var handleTranscriptionTests = []struct {
 		},
 		want: want{
 			status: http.StatusForbidden,
-			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+			body:   `{"status":"error","message":"У вас нет доступа к этой встрече"}`,
 		},
 	},
 	{
@@ -1272,7 +1272,7 @@ var handleTranscriptionTests = []struct {
 						"original_file_name", "created_at", "updated_at",
 					}).AddRow(meetingID, userID, &name, nil, nil, now, now))
 
-				// GetByMeetingID → ErrNoRows → CustomErr{404, "transcription not found"}
+				// GetByMeetingID → ErrNoRows → CustomErr{404, "Транскрипция не найдена"}
 				mock.ExpectQuery("SELECT \\* FROM transcriptions").
 					WithArgs(meetingID).
 					WillReturnError(pgx.ErrNoRows)
@@ -1280,7 +1280,7 @@ var handleTranscriptionTests = []struct {
 		},
 		want: want{
 			status: http.StatusNotFound,
-			body:   `{"status":"error","message":"transcription not found"}`,
+			body:   `{"status":"error","message":"Транскрипция не найдена"}`,
 		},
 	},
 	{
@@ -1297,7 +1297,7 @@ var handleTranscriptionTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -1327,7 +1327,7 @@ var handleTranscriptionTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 }
@@ -1593,7 +1593,7 @@ var handleFindTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -1644,7 +1644,7 @@ var handleFindTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 	{
@@ -1688,7 +1688,7 @@ var handleFindTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 }
@@ -1736,7 +1736,7 @@ var handleDeleteTests = []struct {
 		},
 		want: want{
 			status: http.StatusBadRequest,
-			body:   `{"status":"error","message":"missing 'meeting_id' parameter"}`,
+			body:   `{"status":"error","message":"Не указан идентификатор встречи"}`,
 		},
 	},
 	{
@@ -1751,7 +1751,7 @@ var handleDeleteTests = []struct {
 		},
 		want: want{
 			status: http.StatusBadRequest,
-			body:   `{"status":"error","message":"missing 'user_id' parameter"}`,
+			body:   `{"status":"error","message":"Не указан идентификатор пользователя"}`,
 		},
 	},
 	{
@@ -1814,7 +1814,7 @@ var handleDeleteTests = []struct {
 		},
 		want: want{
 			status: http.StatusNotFound,
-			body:   `{"status":"error","message":"meeting not found"}`,
+			body:   `{"status":"error","message":"Встреча не найдена"}`,
 		},
 	},
 	{
@@ -1838,7 +1838,7 @@ var handleDeleteTests = []struct {
 		},
 		want: want{
 			status: http.StatusForbidden,
-			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+			body:   `{"status":"error","message":"У вас нет доступа к этой встрече"}`,
 		},
 	},
 	{
@@ -1855,7 +1855,7 @@ var handleDeleteTests = []struct {
 		},
 		want: want{
 			status: http.StatusInternalServerError,
-			body:   `{"status":"error","message":"unexpected error happen"}`,
+			body:   `{"status":"error","message":"Произошла ошибка при обработке запроса. Попробуйте выполнить команду еще раз"}`,
 		},
 	},
 }
@@ -1958,7 +1958,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusBadRequest,
-			body:   `{"status":"error","message":"invalid JSON body"}`,
+			body:   `{"status":"error","message":"Некорректное тело запроса"}`,
 		},
 	},
 	{
@@ -1972,7 +1972,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusBadRequest,
-			body:   `{"status":"error","message":"missing 'meeting_id' parameter"}`,
+			body:   `{"status":"error","message":"Не указан идентификатор встречи"}`,
 		},
 	},
 	{
@@ -1986,7 +1986,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusBadRequest,
-			body:   `{"status":"error","message":"missing 'user_id' parameter"}`,
+			body:   `{"status":"error","message":"Не указан идентификатор пользователя"}`,
 		},
 	},
 	{
@@ -2002,7 +2002,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusNotFound,
-			body:   `{"status":"error","message":"meeting not found"}`,
+			body:   `{"status":"error","message":"Встреча не найдена"}`,
 		},
 	},
 	{
@@ -2025,7 +2025,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusForbidden,
-			body:   `{"status":"error","message":"meeting data belongs to another user"}`,
+			body:   `{"status":"error","message":"У вас нет доступа к этой встрече"}`,
 		},
 	},
 	{
@@ -2092,7 +2092,7 @@ var handleRetryTests = []struct {
 		},
 		want: want{
 			status: http.StatusConflict,
-			body:   `{"status":"error","message":"meeting already completed"}`,
+			body:   `{"status":"error","message":"Обработка встречи уже завершена"}`,
 		},
 	},
 }

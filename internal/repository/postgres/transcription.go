@@ -64,7 +64,7 @@ func (r *PostgresTranscriptionRepository) GetByMeetingID(ctx context.Context, me
 	transcription, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, &models.CustomErr{Message: "transcription not found", HTTPStatus: http.StatusNotFound}
+			return nil, models.NewCustomErr(models.ErrCodeTranscriptionNotFound, "Транскрипция не найдена", http.StatusNotFound, err)
 		}
 		return nil, errors.WithStack(err)
 	}

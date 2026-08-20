@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -71,7 +70,7 @@ func (r *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*model
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			logger.Error("task not found")
-			return nil, &models.CustomErr{Message: "task not found", HTTPStatus: http.StatusBadRequest}
+			return nil, models.NewCustomErr(models.ErrCodeTaskNotFound, "Задача обработки не найдена", http.StatusBadRequest, err)
 		}
 		return nil, errors.WithStack(err)
 	}
@@ -83,7 +82,7 @@ func (r *PostgresTaskRepository) GetByMeetingID(ctx context.Context, meetingID s
 	task, err := r.repo.GetByParameter(ctx, "meeting_id", meetingID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("task not found")
+			return nil, models.NewCustomErr(models.ErrCodeTaskNotFound, "Задача обработки не найдена", http.StatusNotFound, err)
 		}
 		return nil, errors.WithStack(err)
 	}

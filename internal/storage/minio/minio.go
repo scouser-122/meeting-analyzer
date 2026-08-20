@@ -2,7 +2,6 @@ package minio
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -53,10 +52,7 @@ func (s *Storage) Save(ctx context.Context, key string, content io.Reader, size 
 		ContentType: contentType,
 	})
 	if err != nil {
-		return &models.CustomErr{
-			Message:    fmt.Sprintf("failed to save file to minio: %v", err),
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeFileUploadFailed, "Не удалось сохранить файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 	return nil
 }
@@ -66,10 +62,7 @@ func (s *Storage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 	fullKey := s.fullKey(key)
 	obj, err := s.client.GetObject(ctx, s.bucket, fullKey, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, &models.CustomErr{
-			Message:    fmt.Sprintf("failed to open file from minio: %v", err),
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return nil, models.NewCustomErr(models.ErrCodeFileOpenFailed, "Не удалось открыть файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 	return obj, nil
 }

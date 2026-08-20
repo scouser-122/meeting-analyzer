@@ -2,7 +2,6 @@ package filesystem
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -27,32 +26,20 @@ func NewStorage(baseDir string) *Storage {
 func (s *Storage) Save(ctx context.Context, key string, content io.Reader, size int64, contentType string) error {
 	destPath := filepath.Join(s.baseDir, key)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return &models.CustomErr{
-			Message:    fmt.Sprintf("failed to create directory: %v", err),
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeFileUploadFailed, "Не удалось сохранить файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 
 	dst, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return &models.CustomErr{
-			Message:    fmt.Sprintf("failed to create file: %v", err),
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeFileUploadFailed, "Не удалось сохранить файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, content); err != nil {
 		if strings.Contains(err.Error(), "request body too large") {
-			return &models.CustomErr{
-				Message:    "file too large",
-				HTTPStatus: http.StatusRequestEntityTooLarge,
-			}
+			return models.NewCustomErr(models.ErrCodeFileTooLarge, "Файл слишком большой. Уменьшите размер и попробуйте снова", http.StatusRequestEntityTooLarge, err)
 		}
-		return &models.CustomErr{
-			Message:    fmt.Sprintf("failed to write file: %v", err),
-			HTTPStatus: http.StatusInternalServerError,
-		}
+		return models.NewCustomErr(models.ErrCodeFileUploadFailed, "Не удалось сохранить файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 	return nil
 }
@@ -62,7 +49,7 @@ func (s *Storage) Open(ctx context.Context, key string) (io.ReadCloser, error) {
 	filePath := filepath.Join(s.baseDir, key)
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, models.NewCustomErr(models.ErrCodeFileOpenFailed, "Не удалось открыть файл. Попробуйте позже", http.StatusInternalServerError, err)
 	}
 	return file, nil
 }
