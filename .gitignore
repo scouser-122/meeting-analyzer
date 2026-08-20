@@ -4,7 +4,7 @@ cmd/server/config.yaml
 cmd/server/data/
 .vscode/launch.json
 cmd/tui/config.yaml
-cmd/tui/data/sample-0.mp3
+cmd/tui/data/
 cmd/tui/tui_client
 cmd/server/server
 .TODO

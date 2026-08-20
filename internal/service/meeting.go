@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/scouser-122/meeting-analyzer/internal/config"
@@ -54,11 +56,15 @@ func NewMeetingsService(
 	return &service
 }
 
-var allowedExts = map[string]bool{
+var allowedAudioExts = map[string]bool{
 	".mp3": true,
 	".wav": true,
 	".m4a": true,
 	".ogg": true,
+}
+
+var allowedTextExts = map[string]bool{
+	".txt": true,
 }
 
 // CreateFromAudioFile saves the uploaded audio file and creates a meeting record with a processing task.
@@ -119,6 +125,91 @@ func (s *MeetingsService) CreateFromAudioFile(
 	return newMeeting, nil
 }
 
+// CreateFromTranscriptionFile creates a meeting from an uploaded text transcription file.
+// The transcription is persisted immediately and the task is created with status "transcribed",
+// so the worker only needs to summarize it.
+func (s *MeetingsService) CreateFromTranscriptionFile(
+	ctx context.Context,
+	meeting *model.Meeting,
+	file multipart.File,
+	header *multipart.FileHeader,
+) (*model.Meeting, error) {
+	if meeting.UserID == "" {
+		return nil, &models.CustomErr{
+			Message:    "user id not specified",
+			HTTPStatus: http.StatusBadRequest,
+		}
+	}
+
+	_, err := s.usersService.GetByID(ctx, meeting.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	text, err := s.readTranscriptionFile(file, header)
+	if err != nil {
+		return nil, err
+	}
+
+	transcriptionID, err := newFileID()
+	if err != nil {
+		return nil, &models.CustomErr{
+			Message:    "internal error",
+			HTTPStatus: http.StatusInternalServerError,
+		}
+	}
+
+	tx, err := s.repositoryUtils.CreateTransaction(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	ctx = context.WithValue(ctx, models.DbTransactionKey, tx)
+
+	newMeeting, err := s.meetingsRepo.Create(ctx, meeting.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if meeting.MeetingName != nil {
+		newMeeting.MeetingName = new(string)
+		*newMeeting.MeetingName = *meeting.MeetingName
+	}
+
+	newMeeting.OriginalFilename = &header.Filename
+	err = s.meetingsRepo.Update(ctx, newMeeting)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.transcriptionService.AddNewTranscription(ctx, &model.Transcription{
+		ID:        transcriptionID,
+		MeetingID: newMeeting.ID,
+		UserID:    newMeeting.UserID,
+		Text:      text,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	task, err := s.tasksService.CreateNewTask(ctx, newMeeting.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.tasksService.UpdateStatus(ctx, task.ID, model.TaskStatusTranscribed, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.repositoryUtils.CommitTransaction(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return newMeeting, nil
+}
+
 func (s *MeetingsService) saveMeetingFile(
 	ctx context.Context,
 	meeting *model.Meeting,
@@ -128,7 +219,7 @@ func (s *MeetingsService) saveMeetingFile(
 	logger := logger.GetSlogLoggerFromContext(ctx)
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if !allowedExts[ext] {
+	if !allowedAudioExts[ext] {
 		logger.Error("unsupported file type", "ext", ext)
 		return &models.CustomErr{
 			Message:    fmt.Sprintf("unsupported file type: %s", ext),
@@ -176,6 +267,32 @@ func newFileID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func (s *MeetingsService) readTranscriptionFile(file multipart.File, header *multipart.FileHeader) (string, error) {
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if !allowedTextExts[ext] {
+		return "", &models.CustomErr{
+			Message:    fmt.Sprintf("unsupported file type: %s", ext),
+			HTTPStatus: http.StatusUnsupportedMediaType,
+		}
+	}
+
+	if header.Size == 0 {
+		return "", &models.CustomErr{
+			Message:    "transcription file is empty",
+			HTTPStatus: http.StatusBadRequest,
+		}
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", &models.CustomErr{
+			Message:    "failed to read transcription file",
+			HTTPStatus: http.StatusInternalServerError,
+		}
+	}
+	return string(data), nil
 }
 
 // DeleteMeetingAudioFile removes the meeting audio file from storage and clears the file path in storage.
